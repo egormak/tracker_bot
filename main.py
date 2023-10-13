@@ -9,7 +9,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 from aiogram.utils.markdown import hbold
 
-from tracker import const, stats
+from tracker import const, stats, task_record
 import config
 
 # All handlers should be attached to the Router (or Dispatcher)
@@ -39,6 +39,18 @@ async def command_start_handler(message: Message) -> None:
     """
     answer_msg = stats.GetStats()
     await message.answer(answer_msg)
+
+@router.message(Command("taskrecordadd"))
+@telegram_auth
+async def command_start_handler(message: Message) -> None:
+
+    """
+    This handler receives messages with `/taskrecordadd` command
+    """
+    # answer_msg = stats.GetStats()
+    result = task_record.AddTaskRecord(message.text)
+    await message.answer(result)
+
 
 @router.message()
 @telegram_auth
