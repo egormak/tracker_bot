@@ -1,14 +1,18 @@
 import requests
-from . import const
+from . import const, errors
 
-def AddTaskRecord(message: str) -> str:
+def AddTaskRecord(message: str = "", task_name: str = "", time_done: int = 0) -> str:
     params = {}
-    for i in message.split()[1:]:
-        key, value = i.split("=")
-        params[key] = value
-    if params.get("task") == None:
+    if message == "":
+        params["task"] = task_name
+        params["time"] = time_done
+    else:
+        for i in message.split()[1:]:
+            key, value = i.split("=")
+            params[key] = value
+    if params.get("task") == None or params.get("task") == "":
         return "Task Not Found"
-    if params.get("time") == None:
+    if params.get("time") == None or params.get("time") == 0:
         return "Time Not Found"
     
     data = {"task_name": params.get("task"), "time_done": int(params.get("time"))}
@@ -22,3 +26,14 @@ def AddTaskRecord(message: str) -> str:
     else:
         # Error!
         return f"POST request failed with status code: {response.status_code}"
+
+
+def GetTaskList() -> list[str]:
+    response = requests.get(const.TASK_LIST_URI)
+
+    # Check the response status code
+    if response.status_code == 200:
+        # Success!
+        return response.json()
+    else:
+        raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
