@@ -1,5 +1,5 @@
 import requests
-from . import const
+from . import const, errors
 
 def GetStats():
     response = requests.get(const.STATS_URI)
@@ -17,6 +17,17 @@ def GetStats():
             message += f"   {k}: {v}\n"
         message += "\n"
     return message
+
+def GetTaskList() -> list[str]:
+    response = requests.get(const.TASK_LIST_URI)
+
+    # Check the response status code
+    if response.status_code == 200:
+        # Success!
+        return response.json()
+    else:
+        raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
+
 
 if __name__ == "__main__":
     GetStats()

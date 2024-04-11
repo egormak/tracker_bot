@@ -4,7 +4,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
-from tracker import general, task_record, errors
+from tracker import general, task_record, errors, stats
 
 router = Router()
 
@@ -26,7 +26,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
     else:
         keyboard = []
         try:
-            list_task = task_record.GetTaskList()
+            list_task = stats.GetTaskList()
             for task in list_task:
                 button = [InlineKeyboardButton(text=f"{task['name']} - {task['time_duration'] - task['time_done']}", callback_data=f"task:{task['name']}")]
                 keyboard.append(button)

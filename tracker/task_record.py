@@ -28,12 +28,3 @@ def AddTaskRecord(message: str = "", task_name: str = "", time_done: int = 0) ->
         return f"POST request failed with status code: {response.status_code}"
 
 
-def GetTaskList() -> list[str]:
-    response = requests.get(const.TASK_LIST_URI)
-
-    # Check the response status code
-    if response.status_code == 200:
-        # Success!
-        return response.json()
-    else:
-        raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
