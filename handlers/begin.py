@@ -1,6 +1,6 @@
 from aiogram import Router
-from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.filters import CommandStart, Command
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, WebAppInfo
 from aiogram.utils.markdown import hbold
 
 from tracker import general
@@ -15,10 +15,10 @@ async def command_start_handler(message: Message) -> None:
     """
     await message.answer(f"Hello, {hbold(message.from_user.full_name)}!")
 
-@router.message(CommandStart())
-def start(update: Update, context: CallbackContext) -> None:
+@router.message(Command("webapp"))
+async def webapp(message: Message) -> None:
     keyboard = [
-        [InlineKeyboardButton("Open WebApp", web_app=InlineKeyboardButton.WebAppInfo(url="https://<username>.github.io/<repository-name>"))]
+        [InlineKeyboardButton(text="Open WebApp", web_app=WebAppInfo(url="https://egormak.github.io/tracker-web-mini/"))]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Click the button below to open the WebApp:', reply_markup=reply_markup)
+    reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    await message.answer('Click the button below to open the WebApp:', reply_markup=reply_markup)

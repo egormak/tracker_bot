@@ -35,7 +35,7 @@ async def main() -> None:
     dp.include_routers(task_record.router, statistic.router, begin.router)
 
     # Initialize Bot instance with a default parse mode which will be passed to all API calls
-    bot = Bot(config.config["telegram"]["token"], parse_mode=ParseMode.HTML)
+    bot = Bot(config.config["telegram"]["token"])
     # And the run events dispatching
     await dp.start_polling(bot)
 
