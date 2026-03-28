@@ -29,5 +29,24 @@ def GetTaskList() -> list[str]:
         raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
 
 
+def GetNextTask() -> str:
+    response = requests.get(const.TASK_PLAN_PERCENT_SCHEDULE)
+    
+    if response.status_code == 200:
+        data = response.json()
+        task_name = data.get("task_name", "unknown")
+        percent = data.get("percent", 0)
+        time_left = data.get("time_left", 0)
+        source_day = data.get("source_day", "")
+        
+        msg = f"Next Task: {task_name}\nPlan: {percent}%\nTime Left: {time_left} min"
+        if source_day:
+            msg += f"\nRollover from: {source_day}"
+        return msg
+    elif response.status_code == 404:
+        return "No tasks available in current schedule."
+    else:
+        raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
+
 if __name__ == "__main__":
     GetStats()

@@ -54,3 +54,9 @@ async def time_handler(message: Message, state: FSMContext) -> None:
     result = task_record.AddTaskRecord(task_name=data.get('task'), time_done=int(data.get('time')))
     await message.answer("result: " + result + ", task: " + data.get('task') + " time: " + data.get('time'))
     await state.clear()
+
+@router.message(Command("task_plan_percent"))
+@general.telegram_auth
+async def command_task_plan_percent(message: Message) -> None:
+    answer_msg = task_record.GetTaskPlanPercent()
+    await message.answer(answer_msg)
