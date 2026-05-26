@@ -18,7 +18,7 @@ async def command_start_handler(message: Message) -> None:
 @router.message(Command("webapp"))
 async def webapp(message: Message) -> None:
     keyboard = [
-        [InlineKeyboardButton(text="Open WebApp", web_app=WebAppInfo(url="https://egormak.github.io/tracker-web-mini/"))]
+        [InlineKeyboardButton(text="Open WebApp", web_app=WebAppInfo(url="https://tracker.makegorka.com/"))]
     ]
     reply_markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
     await message.answer('Click the button below to open the WebApp:', reply_markup=reply_markup)
