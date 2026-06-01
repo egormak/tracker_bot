@@ -37,12 +37,29 @@ def TimerResume() -> str:
 def TimerStatus() -> str:
     response = requests.get(const.TIMER_RUN_STATUS)
     if response.status_code == 200:
-        data = response.json()
-        if data.get("running"):
-            state = data.get("state", "unknown")
-            task = data.get("task_name", "unknown task")
-            elapsed = data.get("elapsed", 0)
-            return f"Timer running: {task} ({state}), Elapsed: {elapsed} seconds"
+        res_data = response.json()
+        if res_data.get("status") == "success" and "data" in res_data:
+            task_data = res_data["data"]
+            task_name = task_data.get("task_name")
+            if task_name:
+                is_running = task_data.get("is_running", False)
+                state = "running" if is_running else "paused"
+                elapsed = task_data.get("accumulated", 0) * 60  # accumulated minutes to seconds
+                
+                if is_running and task_data.get("start_time"):
+                    from datetime import datetime, timezone
+                    try:
+                        start_dt = datetime.fromisoformat(task_data["start_time"].replace("Z", "+00:00"))
+                        now_dt = datetime.now(timezone.utc)
+                        elapsed += int((now_dt - start_dt).total_seconds())
+                    except Exception:
+                        pass
+                
+                minutes = elapsed // 60
+                seconds = elapsed % 60
+                return f"Timer {state}: '{task_name}', Elapsed: {minutes:02d}m {seconds:02d}s"
+            else:
+                return "No timers are currently active."
         else:
             return "No timers are currently active."
     else:
