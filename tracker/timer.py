@@ -71,9 +71,19 @@ def TimerStatus(task_name: str = "") -> str:
 
 def TimerList() -> list:
     response = requests.get(const.TIMER_RUN_LIST)
-    if response.status_code == 200:
+    if response.status_code != 200:
+        raise errors.InvalidStatusCode(f"GET request failed with status code: {response.status_code}")
+    try:
         res_data = response.json()
-        if res_data.get("status") == "success" and "data" in res_data:
-            return res_data["data"]
+    except ValueError:
+        raise errors.InvalidStatusCode("GET request returned an invalid JSON response")
+    if res_data.get("status") == "success" and "data" in res_data:
+        return res_data["data"]
     return []
+
+def FilterRunning(tasks: list) -> list:
+    return [t for t in tasks if t.get("is_running", False)]
+
+def FilterPaused(tasks: list) -> list:
+    return [t for t in tasks if not t.get("is_running", False)]
 

@@ -43,147 +43,125 @@ async def process_timer_start(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.edit_text(res)
     await state.clear()
 
-@router.message(Command("timer_stop"))
-@general.telegram_auth
-async def command_timer_stop(message: Message) -> None:
+def _safe_call(action_fn, task_name: str) -> str:
+    try:
+        return action_fn(task_name)
+    except errors.InvalidStatusCode as e:
+        return e.message
+
+
+async def _handle_timer_command(
+    message: Message,
+    action_fn,
+    filter_fn,
+    prefix: str,
+    button_label: str,
+    prompt_word: str,
+    empty_msg: str,
+    filtered_empty_msg: str = None,
+) -> None:
     parts = message.text.split()
     if len(parts) > 1:
         task_name = " ".join(parts[1:])
-        res = timer.TimerStop(task_name)
+        res = _safe_call(action_fn, task_name)
         await message.answer(res)
         return
 
-    tasks = timer.TimerList()
+    try:
+        tasks = timer.TimerList()
+    except errors.InvalidStatusCode as e:
+        await message.answer(e.message)
+        return
+
     if not tasks:
-        await message.answer("No active timers found.")
+        await message.answer(empty_msg)
         return
+
+    if filter_fn:
+        tasks = filter_fn(tasks)
+        if not tasks:
+            await message.answer(filtered_empty_msg)
+            return
+
     if len(tasks) == 1:
-        res = timer.TimerStop(tasks[0]["task_name"])
+        res = _safe_call(action_fn, tasks[0]["task_name"])
         await message.answer(res)
         return
 
-    keyboard = []
-    for t in tasks:
-        name = t["task_name"]
-        keyboard.append([InlineKeyboardButton(text=f"Stop {name}", callback_data=f"t_stop:{name}")])
+    keyboard = [
+        [InlineKeyboardButton(text=f"{button_label} {t['task_name']}", callback_data=f"{prefix}:{i}")]
+        for i, t in enumerate(tasks)
+    ]
     menu = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer("Choose task to stop:", reply_markup=menu)
+    await message.answer(f"Choose task to {prompt_word}:", reply_markup=menu)
 
-@router.callback_query(lambda c: c.data.startswith("t_stop:"))
-async def process_timer_stop_callback(callback: CallbackQuery) -> None:
-    task_name = callback.data.split(":", 1)[1]
-    res = timer.TimerStop(task_name)
-    await callback.message.edit_text(res)
+
+# Maps a button-prefix to the tracker action it performs and the task filter
+# (if any) used both to build that keyboard and to resolve its callback index.
+_TIMER_ACTIONS = {
+    "t_stop": (timer.TimerStop, None),
+    "t_pause": (timer.TimerPause, timer.FilterRunning),
+    "t_resume": (timer.TimerResume, timer.FilterPaused),
+    "t_status": (timer.TimerStatus, None),
+}
+
+
+@router.message(Command("timer_stop"))
+@general.telegram_auth
+async def command_timer_stop(message: Message) -> None:
+    await _handle_timer_command(
+        message, timer.TimerStop, None, "t_stop", "Stop", "stop",
+        "No active timers found.",
+    )
+
 
 @router.message(Command("timer_pause"))
 @general.telegram_auth
 async def command_timer_pause(message: Message) -> None:
-    parts = message.text.split()
-    if len(parts) > 1:
-        task_name = " ".join(parts[1:])
-        res = timer.TimerPause(task_name)
-        await message.answer(res)
-        return
+    await _handle_timer_command(
+        message, timer.TimerPause, timer.FilterRunning, "t_pause", "Pause", "pause",
+        "No active timers found.", "No running timers found to pause.",
+    )
 
-    tasks = timer.TimerList()
-    if not tasks:
-        await message.answer("No active timers found.")
-        return
-    running_tasks = [t for t in tasks if t.get("is_running", False)]
-    if not running_tasks:
-        await message.answer("No running timers found to pause.")
-        return
-    if len(running_tasks) == 1:
-        res = timer.TimerPause(running_tasks[0]["task_name"])
-        await message.answer(res)
-        return
-
-    keyboard = []
-    for t in running_tasks:
-        name = t["task_name"]
-        keyboard.append([InlineKeyboardButton(text=f"Pause {name}", callback_data=f"t_pause:{name}")])
-    menu = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer("Choose task to pause:", reply_markup=menu)
-
-@router.callback_query(lambda c: c.data.startswith("t_pause:"))
-async def process_timer_pause_callback(callback: CallbackQuery) -> None:
-    task_name = callback.data.split(":", 1)[1]
-    res = timer.TimerPause(task_name)
-    await callback.message.edit_text(res)
 
 @router.message(Command("timer_resume"))
 @general.telegram_auth
 async def command_timer_resume(message: Message) -> None:
-    parts = message.text.split()
-    if len(parts) > 1:
-        task_name = " ".join(parts[1:])
-        res = timer.TimerResume(task_name)
-        await message.answer(res)
-        return
+    await _handle_timer_command(
+        message, timer.TimerResume, timer.FilterPaused, "t_resume", "Resume", "resume",
+        "No active timers found.", "No paused timers found to resume.",
+    )
 
-    tasks = timer.TimerList()
-    if not tasks:
-        await message.answer("No active timers found.")
-        return
-    paused_tasks = [t for t in tasks if not t.get("is_running", False)]
-    if not paused_tasks:
-        await message.answer("No paused timers found to resume.")
-        return
-    if len(paused_tasks) == 1:
-        res = timer.TimerResume(paused_tasks[0]["task_name"])
-        await message.answer(res)
-        return
-
-    keyboard = []
-    for t in paused_tasks:
-        name = t["task_name"]
-        keyboard.append([InlineKeyboardButton(text=f"Resume {name}", callback_data=f"t_resume:{name}")])
-    menu = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer("Choose task to resume:", reply_markup=menu)
-
-@router.callback_query(lambda c: c.data.startswith("t_resume:"))
-async def process_timer_resume_callback(callback: CallbackQuery) -> None:
-    task_name = callback.data.split(":", 1)[1]
-    res = timer.TimerResume(task_name)
-    await callback.message.edit_text(res)
 
 @router.message(Command("timer_status"))
 @general.telegram_auth
 async def command_timer_status(message: Message) -> None:
-    parts = message.text.split()
-    if len(parts) > 1:
-        task_name = " ".join(parts[1:])
-        try:
-            res = timer.TimerStatus(task_name)
-            await message.answer(res)
-        except Exception as e:
-            await message.answer(str(e))
-        return
+    await _handle_timer_command(
+        message, timer.TimerStatus, None, "t_status", "Status:", "view status",
+        "No active timers found.",
+    )
 
-    tasks = timer.TimerList()
-    if not tasks:
-        await message.answer("No active timers found.")
-        return
-    if len(tasks) == 1:
-        try:
-            res = timer.TimerStatus(tasks[0]["task_name"])
-            await message.answer(res)
-        except Exception as e:
-            await message.answer(str(e))
-        return
 
-    keyboard = []
-    for t in tasks:
-        name = t["task_name"]
-        keyboard.append([InlineKeyboardButton(text=f"Status: {name}", callback_data=f"t_status:{name}")])
-    menu = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    await message.answer("Choose task to view status:", reply_markup=menu)
+@router.callback_query(lambda c: (c.data or "").split(":", 1)[0] in _TIMER_ACTIONS)
+async def process_timer_action_callback(callback: CallbackQuery) -> None:
+    await callback.answer()
+    prefix, idx_str = callback.data.split(":", 1)
+    action_fn, filter_fn = _TIMER_ACTIONS[prefix]
 
-@router.callback_query(lambda c: c.data.startswith("t_status:"))
-async def process_timer_status_callback(callback: CallbackQuery) -> None:
-    task_name = callback.data.split(":", 1)[1]
     try:
-        res = timer.TimerStatus(task_name)
-        await callback.message.edit_text(res)
-    except Exception as e:
-        await callback.message.edit_text(str(e))
+        tasks = timer.TimerList()
+    except errors.InvalidStatusCode as e:
+        await callback.message.edit_text(e.message)
+        return
+
+    if filter_fn:
+        tasks = filter_fn(tasks)
+
+    idx = int(idx_str)
+    if idx >= len(tasks):
+        await callback.message.edit_text("Task no longer available.")
+        return
+
+    task_name = tasks[idx]["task_name"]
+    res = _safe_call(action_fn, task_name)
+    await callback.message.edit_text(res)
