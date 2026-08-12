@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
 
 from tracker import task_record, general
-from handlers import task_record, statistic, begin, rest, timer
+from handlers import task_record, statistic, begin, rest, timer, evening
 import config
 
 # All handlers should be attached to the Router (or Dispatcher)
@@ -37,7 +37,8 @@ async def main() -> None:
         statistic.router,
         begin.router,
         rest.router,
-        timer.router
+        timer.router,
+        evening.router
     )
 
     # Initialize Bot instance with a default parse mode which will be passed to all API calls
