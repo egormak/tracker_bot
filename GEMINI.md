@@ -1,30 +1,28 @@
 # tracker_bot
 
-A Telegram bot designed to interface with the tracker system. It allows users to record tasks, manage rest time, and control timers directly from Telegram.
+A Telegram bot client (aiogram v3) designed to interface with `tracker-server`. It allows a single admin user to record tasks, manage rest time, control task timers, and view statistics directly from Telegram.
 
 ## Project Overview
 
-- **Technologies**: Python 3.11+, aiogram v3, Pydantic, Requests.
+- **Technologies**: Python 3.10+, aiogram v3, Pydantic, Requests.
 - **Architecture**:
-  - `main.py`: Entry point, initializes the bot and registers routers.
-  - `handlers/`: Modular command handlers using aiogram Routers.
-    - `task_record.py`, `timer.py`, `rest.py`, `statistic.py`, `begin.py`.
-  - `tracker/`: Business logic and API interaction layer.
-    - `task_record.py`, `timer.py`, `rest.py`, `stats.py`.
-  - `config/`: Configuration loading from `config.yaml`.
+  - `main.py`: Entry point, constructs `Bot` and `Dispatcher`, registers handler routers, starts polling loop.
+  - `handlers/`: Modular Telegram command routers (`begin.py`, `task_record.py`, `timer.py`, `rest.py`, `statistic.py`). Handles UI, inline keyboards, and FSM.
+  - `tracker/`: API communication layer using synchronous `requests`.
+    - `const.py`: Endpoint URLs constructed from `config['app_url']`.
+    - `general.py`: Auth decorators (`@telegram_auth`, `@telegram_auth_with_state`).
+    - `errors.py`: Exception classes (`InvalidStatusCode`).
+    - `task_record.py`, `timer.py`, `rest.py`, `stats.py`: Formatted API helper functions.
+  - `config/`: Configuration loading from `config.yaml` into `config.config`.
 
 ## Building and Running
-
-### Prerequisites
-- Python 3.11+
-- Telegram Bot Token (from @BotFather)
 
 ### Local Setup
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp config_example.yaml config.yaml # Configure token and API URL
+cp config_example.yaml config.yaml # Set telegram.token and app_url
 python main.py
 ```
 
@@ -35,15 +33,18 @@ docker run -it --rm -v ${PWD}/config.yaml:/usr/src/app/config.yaml tracker-bot
 ```
 
 ## Key Commands (Telegram)
-- `/start`: Initial bot greeting and help.
-- Recording: Select task and enter minutes done.
-- Timer: Start, stop, pause, resume, or check status of the active timer.
-- Rest: Add, spend, or check available rest minutes.
-- Statistics: View today's summary.
+
+- `/start`: Initial greeting and help overview.
+- `/task`: Select task and record completed minutes.
+- `/timer`: Start, stop, pause, resume, or check status of active timer.
+- `/rest`: Add, spend, or check available rest minutes.
+- `/stats`: View today's summary statistics.
 
 ## Development Conventions
 
-- **FSM**: Use aiogram's Finite State Machine for multi-step interactions.
-- **API Interaction**: Keep all API calls in the `tracker/` package.
-- **Authentication**: Use `@general.telegram_auth` decorators to restrict access to the `ADMIN_ID` configured in `config.yaml`.
-- **Async/Sync**: The bot lifecycle is asynchronous (`aiogram`), but API calls currently use the synchronous `requests` library.
+- **Two-Layer Architecture**: Keep Telegram UI/FSM in `handlers/` and API HTTP calls in `tracker/`.
+- **FSM Pattern**: Stateful commands support dual execution paths: inline argument (e.g. `/restadd 30`) executes immediately; no argument prompts UI, sets FSM state, and completes on callback.
+- **Authentication**: Gate entry-point handlers using `@general.telegram_auth` or `@general.telegram_auth_with_state` checking `ADMIN_ID`.
+- **Centralized Endpoints**: Add new endpoint URLs to `tracker/const.py`.
+- **Rest-Time Units**: Convert rest time values at boundary (`units = minutes * 100`).
+- **No Local State**: The bot is completely stateless; all task and timer state resides in `tracker-server`.
