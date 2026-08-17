@@ -30,7 +30,8 @@ async def command_evening_handler(message: Message) -> None:
     data = evening.get_evening_focus(sprint_time=20)
     current_task = data.get("current_task", {})
     task_name = current_task.get("task_name", "")
-    gap = current_task.get("weekly_gap", 0)
+    weekly_done = current_task.get("weekly_done", 0)
+    weekly_target = current_task.get("weekly_target", 0)
 
     if not task_name:
         await message.answer("🎉 Отличная работа! Все задачи на эту неделю выполнены.")
@@ -39,7 +40,7 @@ async def command_evening_handler(message: Message) -> None:
     text = (
         f"🌙 {hbold('РЕЖИМ ВЕЧЕРНЕГО ДОБОРА (Evening Focus)')}\n\n"
         f"🎯 {hbold('Рекомендуемая задача:')} {task_name}\n"
-        f"📉 {hbold('Недельное отставание:')} -{gap} мин\n"
+        f"📊 {hbold('Сделано за неделю:')} {weekly_done} мин (план: {weekly_target} мин)\n"
         f"⏱️ {hbold('Целевой спринт:')} 20 мин (Лимит отдыха: 10 мин)"
     )
 
@@ -56,7 +57,8 @@ async def process_evening_skip(callback: CallbackQuery):
     data = evening.skip_evening_task(task_name, sprint_time=sprint_time)
     current_task = data.get("current_task", {})
     next_task_name = current_task.get("task_name", "")
-    gap = current_task.get("weekly_gap", 0)
+    weekly_done = current_task.get("weekly_done", 0)
+    weekly_target = current_task.get("weekly_target", 0)
 
     if not next_task_name:
         await callback.message.edit_text("🎉 Отличная работа! Все задачи на эту неделю выполнены.")
@@ -67,7 +69,7 @@ async def process_evening_skip(callback: CallbackQuery):
         f"🌙 {hbold('РЕЖИМ ВЕЧЕРНЕГО ДОБОРА (Evening Focus)')}\n\n"
         f"ℹ️ Задача '{task_name}' пропущена на сегодня\n"
         f"🎯 {hbold('Рекомендуемая задача:')} {next_task_name}\n"
-        f"📉 {hbold('Недельное отставание:')} -{gap} мин\n"
+        f"📊 {hbold('Сделано за неделю:')} {weekly_done} мин (план: {weekly_target} мин)\n"
         f"⏱️ {hbold('Целевой спринт:')} {sprint_time} мин (Лимит отдыха: 10 мин)"
     )
 
