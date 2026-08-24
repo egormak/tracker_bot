@@ -25,7 +25,7 @@ def GetRest() -> str:
     if response.status_code == 200:
         try:
             data = response.json()
-            minutes = data.get("rest_time")
+            minutes = data.get("rest_time", 0) / 100
             return f"Available rest time: {minutes} minutes."
         except Exception:
             return "Failed to parse available rest response."

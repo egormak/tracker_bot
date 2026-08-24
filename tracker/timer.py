@@ -87,3 +87,12 @@ def FilterRunning(tasks: list) -> list:
 def FilterPaused(tasks: list) -> list:
     return [t for t in tasks if not t.get("is_running", False)]
 
+def TimerAdjust(task_name: str, delta_minutes: int) -> str:
+    data = {"task_name": task_name, "delta_minutes": delta_minutes}
+    response = requests.post(const.TIMER_RUN_ADJUST, json=data)
+    if response.status_code == 200:
+        sign = f"+{delta_minutes}" if delta_minutes > 0 else f"{delta_minutes}"
+        return f"Adjusted timer for '{task_name}' by {sign} min."
+    else:
+        return f"Failed to adjust timer: status code {response.status_code}"
+

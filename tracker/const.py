@@ -16,8 +16,11 @@ TIMER_RUN_START = f"{config.config['app_url']}/api/v1/timer/run/start"
 TIMER_RUN_STOP = f"{config.config['app_url']}/api/v1/timer/run/stop"
 TIMER_RUN_PAUSE = f"{config.config['app_url']}/api/v1/timer/run/pause"
 TIMER_RUN_RESUME = f"{config.config['app_url']}/api/v1/timer/run/resume"
+TIMER_RUN_ADJUST = f"{config.config['app_url']}/api/v1/timer/run/adjust"
 TIMER_RUN_STATUS = f"{config.config['app_url']}/api/v1/timer/run/status"
 TIMER_RUN_LIST = f"{config.config['app_url']}/api/v1/timer/run/list"
+
+TASK_PLAN_ROTATE = f"{config.config['app_url']}/api/v1/task/plan/rotate"
 
 EVENING_FOCUS_URI = f"{config.config['app_url']}/api/v1/mode/evening-focus"
 EVENING_SKIP_URI = f"{config.config['app_url']}/api/v1/mode/evening-focus/skip"
