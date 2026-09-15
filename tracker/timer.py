@@ -96,3 +96,22 @@ def TimerAdjust(task_name: str, delta_minutes: int) -> str:
     else:
         return f"Failed to adjust timer: status code {response.status_code}"
 
+
+def start_task(task_name: str, target_duration: int = 0, role: str = "") -> dict:
+    data = {"task_name": task_name}
+    if target_duration:
+        data["target_duration"] = target_duration
+    if role:
+        data["role"] = role
+    try:
+        response = requests.post(const.TIMER_RUN_START, json=data)
+        if response.status_code == 200:
+            res_json = response.json()
+            if isinstance(res_json, dict):
+                return res_json
+            return {"status": "success"}
+        return {"status": "error", "message": f"Status code {response.status_code}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
