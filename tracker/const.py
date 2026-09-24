@@ -24,3 +24,6 @@ TASK_PLAN_ROTATE = f"{config.config['app_url']}/api/v1/task/plan/rotate"
 
 EVENING_FOCUS_URI = f"{config.config['app_url']}/api/v1/mode/evening-focus"
 EVENING_SKIP_URI = f"{config.config['app_url']}/api/v1/mode/evening-focus/skip"
+
+RAMP_STATUS_URI = f"{config.config['app_url']}/api/v1/ramp/status"
+RAMP_RESET_URI = f"{config.config['app_url']}/api/v1/ramp/reset"
