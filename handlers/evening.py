@@ -4,6 +4,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.utils.markdown import hbold
 
 from tracker import general, evening, timer
+from keyboards.callback import task_callback
+from handlers.task_callback import resolve_task_token, split_task_payload
 
 router = Router()
 
@@ -34,7 +36,7 @@ def build_evening_keyboard(candidates, sprint_time: int = 20) -> InlineKeyboardM
         row1 = [
             InlineKeyboardButton(
                 text=f"▶️ {i}️⃣ {c.get('task_name', '')[:10]}",
-                callback_data=f"eve_start:{c.get('task_name', '')}:{sprint_time}"
+                callback_data=task_callback("eve_start", c.get('task_name', ''), f":{sprint_time}")
             )
             for i, c in enumerate(candidates, 1)
         ]
@@ -45,7 +47,7 @@ def build_evening_keyboard(candidates, sprint_time: int = 20) -> InlineKeyboardM
         top_task_name = candidates[0].get("task_name", "")
         row2 = [
             InlineKeyboardButton(text=combo_label, callback_data="eve_combo:10"),
-            InlineKeyboardButton(text="⏭️ Пропустить #1", callback_data=f"eve_skip:{top_task_name}:{sprint_time}")
+            InlineKeyboardButton(text="⏭️ Пропустить #1", callback_data=task_callback("eve_skip", top_task_name, f":{sprint_time}"))
         ]
         buttons.append(row2)
 
@@ -58,27 +60,44 @@ def build_evening_keyboard(candidates, sprint_time: int = 20) -> InlineKeyboardM
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-@router.message(Command("evening"))
-@general.telegram_auth
-async def command_evening_handler(message: Message) -> None:
-    sprint_time = 20
+async def render_evening_triage(message: Message, sprint_time: int = 20, edit: bool = False) -> None:
     data = evening.get_evening_focus(sprint_time=sprint_time)
     candidates = data.get("candidates", [])[:3]
 
     if not candidates:
-        await message.answer("🎉 Отличная работа! Все задачи на эту неделю выполнены.")
+        text = "🎉 Отличная работа! Все задачи на эту неделю выполнены."
+        if edit:
+            await message.edit_text(text)
+        else:
+            await message.answer(text)
         return
 
     text = format_evening_focus_message(candidates)
     markup = build_evening_keyboard(candidates, sprint_time=sprint_time)
-    await message.answer(text, reply_markup=markup)
+    if edit:
+        await message.edit_text(text, reply_markup=markup)
+    else:
+        await message.answer(text, reply_markup=markup)
+
+
+@router.message(Command("evening"))
+@general.telegram_auth
+async def command_evening_handler(message: Message) -> None:
+    await render_evening_triage(message, sprint_time=20, edit=False)
+
+
+def _resolve_evening_task(token: str, sprint_time: int) -> str:
+    def candidate_names():
+        data = evening.get_evening_focus(sprint_time=sprint_time)
+        return [c.get("task_name", "") for c in data.get("candidates", [])]
+    return resolve_task_token(token, extra_names=candidate_names)
 
 
 @router.callback_query(F.data.startswith("eve_skip:"))
 async def process_evening_skip(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    task_name = parts[1]
-    sprint_time = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 20
+    token, time_str = split_task_payload(callback.data, "eve_skip:")
+    sprint_time = int(time_str) if time_str.isdigit() else 20
+    task_name = _resolve_evening_task(token, sprint_time)
 
     data = evening.skip_evening_task(task_name, sprint_time=sprint_time)
     candidates = data.get("candidates", [])[:3]
@@ -206,9 +225,9 @@ async def process_evening_combo(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("eve_start:"))
 async def process_evening_start(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    task_name = parts[1]
-    sprint_time = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 20
+    token, time_str = split_task_payload(callback.data, "eve_start:")
+    sprint_time = int(time_str) if time_str.isdigit() else 20
+    task_name = _resolve_evening_task(token, sprint_time)
 
     res = timer.start_task(task_name=task_name, target_duration=sprint_time)
     if isinstance(res, dict) and res.get("status") == "error":

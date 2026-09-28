@@ -5,6 +5,8 @@ from aiogram.fsm.state import StatesGroup, State
 from aiogram.fsm.context import FSMContext
 
 from tracker import general, task_record, errors, stats
+from keyboards.callback import task_callback
+from handlers.task_callback import resolve_task_token
 
 router = Router()
 
@@ -28,7 +30,7 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
         try:
             list_task = stats.GetTaskList()
             for task in list_task:
-                button = [InlineKeyboardButton(text=f"{task['name']} - {task['time_duration'] - task['time_done']}", callback_data=f"task:{task['name']}")]
+                button = [InlineKeyboardButton(text=f"{task['name']} - {task['time_duration'] - task['time_done']}", callback_data=task_callback("task", task['name']))]
                 keyboard.append(button)
             menu = InlineKeyboardMarkup(inline_keyboard=keyboard)
             await message.answer("Choose task:", reply_markup=menu)
@@ -38,21 +40,35 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
             return
 
 @router.callback_query(lambda c: c.data.startswith("task:"))
-@router.message(TaskRecord.task)
 # @general.telegram_auth
 async def task_handler(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.update_data(task=callback.data.split(":")[1])
+    await state.update_data(task=resolve_task_token(callback.data[len("task:"):]))
     await state.set_state(TaskRecord.time)
     await callback.message.edit_text("Enter time in minutes")
+
+@router.message(TaskRecord.task)
+# @general.telegram_auth
+async def task_message_handler(message: Message, state: FSMContext) -> None:
+    task_name = (message.text or "").strip()
+    if not task_name:
+        await message.answer("Send a task name or choose one from the list.")
+        return
+    await state.update_data(task=task_name)
+    await state.set_state(TaskRecord.time)
+    await message.answer("Enter time in minutes")
 
 @router.message(TaskRecord.time)
 # @general.telegram_auth
 async def time_handler(message: Message, state: FSMContext) -> None:
-    await state.update_data(time=message.text)
+    time_str = (message.text or "").strip()
+    if not time_str.isdigit() or int(time_str) <= 0:
+        await message.answer("Time must be a positive whole number of minutes. Try again.")
+        return
+    await state.update_data(time=time_str)
     data = await state.get_data()
     # result = task_record.AddTaskRecord(f"task={data.get('task')}&time={data.get('time')}")
-    result = task_record.AddTaskRecord(task_name=data.get('task'), time_done=int(data.get('time')))
-    await message.answer("result: " + result + ", task: " + data.get('task') + " time: " + data.get('time'))
+    result = task_record.AddTaskRecord(task_name=data.get('task'), time_done=int(time_str))
+    await message.answer("result: " + result + ", task: " + data.get('task') + " time: " + time_str)
     await state.clear()
 
 @router.message(Command("task_plan_percent"))

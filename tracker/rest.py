@@ -2,7 +2,7 @@ import requests
 from . import const, errors
 
 def AddRest(time_minutes: int) -> str:
-    data = {"minutes": time_minutes}
+    data = {"rest_time": time_minutes}
     response = requests.post(const.REST_ADD_URI, json=data)
 
     if response.status_code == 200:
@@ -11,7 +11,7 @@ def AddRest(time_minutes: int) -> str:
         return f"Failed to add rest with status code: {response.status_code}"
 
 def SpendRest(time_minutes: int) -> str:
-    data = {"minutes": time_minutes}
+    data = {"rest_time": time_minutes}
     response = requests.post(const.REST_SPEND_URI, json=data)
 
     if response.status_code == 200:

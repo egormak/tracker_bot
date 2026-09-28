@@ -290,3 +290,44 @@ def test_process_evening_start():
             callback.answer.assert_called_once()
 
     asyncio.run(run())
+
+
+LONG_TASK = "Изучение распределённых систем и консенсуса Raft"  # > 64 bytes in UTF-8
+
+
+def test_evening_keyboard_long_names_fit_callback_limit():
+    markup = evening_handler.build_evening_keyboard([{"task_name": LONG_TASK}], sprint_time=20)
+    for row in markup.inline_keyboard:
+        for btn in row:
+            assert len(btn.callback_data.encode("utf-8")) <= 64
+
+
+def test_process_evening_start_resolves_hashed_name():
+    from keyboards.callback import task_callback
+
+    async def run():
+        with patch("tracker.evening.get_evening_focus", return_value={"candidates": [{"task_name": LONG_TASK}]}), \
+             patch("tracker.timer.start_task", return_value={"status": "success"}) as mock_start:
+            callback = MagicMock()
+            callback.data = task_callback("eve_start", LONG_TASK, ":30")
+            callback.message.edit_text = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await evening_handler.process_evening_start(callback)
+            mock_start.assert_called_once_with(task_name=LONG_TASK, target_duration=30)
+
+    asyncio.run(run())
+
+
+def test_process_evening_start_name_with_colon():
+    async def run():
+        with patch("tracker.timer.start_task", return_value={"status": "success"}) as mock_start:
+            callback = MagicMock()
+            callback.data = "eve_start:ch:1:15"
+            callback.message.edit_text = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await evening_handler.process_evening_start(callback)
+            mock_start.assert_called_once_with(task_name="ch:1", target_duration=15)
+
+    asyncio.run(run())

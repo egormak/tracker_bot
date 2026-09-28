@@ -1,10 +1,12 @@
 import requests
 from . import const, errors
 
-def TimerStart(task_name: str, group_name: str = "") -> str:
+def TimerStart(task_name: str, group_name: str = "", target_duration: int = 0) -> str:
     data = {"task_name": task_name}
     if group_name:
         data["group_name"] = group_name
+    if target_duration:
+        data["target_duration"] = target_duration
 
     response = requests.post(const.TIMER_RUN_START, json=data)
     
@@ -113,5 +115,20 @@ def start_task(task_name: str, target_duration: int = 0, role: str = "") -> dict
         return {"status": "error", "message": f"Status code {response.status_code}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+
+def get_timer_status_raw(task_name: str = "") -> dict | None:
+    params = {"task_name": task_name} if task_name else {}
+    try:
+        response = requests.get(const.TIMER_RUN_STATUS, params=params)
+        if response.status_code == 200:
+            res_data = response.json()
+            if res_data.get("status") == "success" and "data" in res_data:
+                task_data = res_data["data"]
+                if task_data and task_data.get("task_name"):
+                    return task_data
+    except Exception:
+        pass
+    return None
 
 
