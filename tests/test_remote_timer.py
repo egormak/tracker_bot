@@ -567,6 +567,159 @@ def test_callback_t_pause_failure_keeps_keyboard():
     asyncio.run(run())
 
 
+def test_callback_t_pause_unresolved_hash():
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused.") as mock_pause, \
+             patch("tracker.timer.TimerList", return_value=[]), \
+             patch("tracker.stats.GetTaskList", return_value=[]):
+            callback = MagicMock()
+            callback.data = "t_pause:#123456789abc"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_pause_callback(callback)
+
+            mock_pause.assert_called_once_with("")
+            callback.answer.assert_called_once_with("⏸ Пауза")
+            callback.message.edit_text.assert_called_once()
+            text = callback.message.edit_text.call_args[0][0]
+            markup = callback.message.edit_text.call_args[1]["reply_markup"]
+            assert "Timer paused." in text
+            assert len(markup.inline_keyboard) == 1
+            row = markup.inline_keyboard[0]
+            assert row[0].text == "▶️ Возобновить"
+            assert row[0].callback_data == "t_resume:"
+            assert row[1].text == "⏹ Стоп"
+            assert row[1].callback_data == "t_stop:"
+            assert row[2].text == "🔄 Сменить"
+            assert row[2].callback_data == "t_switch"
+
+    asyncio.run(run())
+
+
+def test_callback_t_pause_edit_text_exception_fallback():
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused.") as mock_pause:
+            callback = MagicMock()
+            callback.data = "t_pause:coding"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock(side_effect=Exception("TelegramBadRequest: message is not modified"))
+            callback.message.edit_reply_markup = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_pause_callback(callback)
+
+            mock_pause.assert_called_once_with("coding")
+            callback.answer.assert_called_once_with("⏸ Пауза")
+            callback.message.edit_text.assert_called_once()
+            callback.message.edit_reply_markup.assert_called_once()
+
+
+def test_callback_t_pause_both_edits_fail_safe():
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused."):
+            callback = MagicMock()
+            callback.data = "t_pause:coding"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock(side_effect=Exception("TelegramBadRequest: message to edit not found"))
+            callback.message.edit_reply_markup = AsyncMock(side_effect=Exception("TelegramBadRequest: message to edit not found"))
+            callback.answer = AsyncMock()
+
+            # Should not raise exception
+            await timer_handler.process_timer_pause_callback(callback)
+            callback.answer.assert_called_once_with("⏸ Пауза")
+
+
+def test_callback_t_pause_server_exception_safe():
+    async def run():
+        with patch("tracker.timer.TimerPause", side_effect=Exception("Connection refused")):
+            callback = MagicMock()
+            callback.data = "t_pause:coding"
+            callback.message = MagicMock()
+            callback.message.reply_markup = MagicMock()
+            callback.message.edit_text = AsyncMock()
+            callback.answer = AsyncMock()
+
+            # Should not crash
+            await timer_handler.process_timer_pause_callback(callback)
+            callback.answer.assert_called_once_with("⏸ Пауза")
+            callback.message.edit_text.assert_called_once()
+            assert "Failed to pause timer" in callback.message.edit_text.call_args[0][0]
+
+
+def test_callback_t_resume_unresolved_hash():
+    async def run():
+        with patch("tracker.timer.TimerResume", return_value="Timer resumed.") as mock_resume, \
+             patch("tracker.timer.TimerList", return_value=[]), \
+             patch("tracker.stats.GetTaskList", return_value=[]):
+            callback = MagicMock()
+            callback.data = "t_resume:#123456789abc"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_resume_callback(callback)
+
+            mock_resume.assert_called_once_with("")
+            callback.answer.assert_called_once_with("▶️ Возобновить")
+            callback.message.edit_text.assert_called_once()
+            text = callback.message.edit_text.call_args[0][0]
+            markup = callback.message.edit_text.call_args[1]["reply_markup"]
+            assert "Timer resumed." in text
+            assert len(markup.inline_keyboard) == 1
+            row = markup.inline_keyboard[0]
+            assert row[0].text == "⏸ Пауза"
+            assert row[0].callback_data == "t_pause:"
+            assert row[1].text == "⏹ Стоп"
+            assert row[1].callback_data == "t_stop:"
+            assert row[2].text == "🔄 Сменить"
+            assert row[2].callback_data == "t_switch"
+
+    asyncio.run(run())
+
+
+def test_callback_t_pause_telegram_bad_request_not_modified():
+    from aiogram.exceptions import TelegramBadRequest
+
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused."):
+            callback = MagicMock()
+            callback.data = "t_pause:coding"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock(
+                side_effect=TelegramBadRequest(method=None, message="Bad Request: message is not modified")
+            )
+            callback.message.edit_reply_markup = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_pause_callback(callback)
+
+            callback.answer.assert_called_once_with("⏸ Пауза")
+            callback.message.edit_text.assert_called_once()
+            callback.message.edit_reply_markup.assert_called_once()
+
+    asyncio.run(run())
+
+
+def test_callback_t_pause_unexpected_edit_error_logged():
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused."), \
+             patch("handlers.timer.logger.error") as mock_logger:
+            callback = MagicMock()
+            callback.data = "t_pause:coding"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock(side_effect=RuntimeError("Unexpected Telegram API error"))
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_pause_callback(callback)
+
+            mock_logger.assert_called_once()
+            assert "Unexpected error editing message" in mock_logger.call_args[0][0]
+
+    asyncio.run(run())
+
+
 def test_task_record_callback_resolves_hashed_name():
     from handlers import task_record as task_record_handler
     from keyboards.callback import task_callback
