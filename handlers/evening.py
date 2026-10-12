@@ -5,7 +5,7 @@ from aiogram.utils.markdown import hbold
 
 from tracker import general, evening, timer
 from keyboards.callback import task_callback
-from handlers.task_callback import resolve_task_token, split_task_payload
+from handlers.task_callback import try_resolve_task_token, answer_unknown_task, split_task_payload
 
 router = Router()
 
@@ -86,11 +86,11 @@ async def command_evening_handler(message: Message) -> None:
     await render_evening_triage(message, sprint_time=20, edit=False)
 
 
-def _resolve_evening_task(token: str, sprint_time: int) -> str:
+def _resolve_evening_task(token: str, sprint_time: int) -> str | None:
     def candidate_names():
         data = evening.get_evening_focus(sprint_time=sprint_time)
         return [c.get("task_name", "") for c in data.get("candidates", [])]
-    return resolve_task_token(token, extra_names=candidate_names)
+    return try_resolve_task_token(token, extra_names=candidate_names)
 
 
 @router.callback_query(F.data.startswith("eve_skip:"))
@@ -98,6 +98,9 @@ async def process_evening_skip(callback: CallbackQuery):
     token, time_str = split_task_payload(callback.data, "eve_skip:")
     sprint_time = int(time_str) if time_str.isdigit() else 20
     task_name = _resolve_evening_task(token, sprint_time)
+    if task_name is None:
+        await answer_unknown_task(callback, "Обновите /evening")
+        return
 
     data = evening.skip_evening_task(task_name, sprint_time=sprint_time)
     candidates = data.get("candidates", [])[:3]
@@ -228,6 +231,9 @@ async def process_evening_start(callback: CallbackQuery):
     token, time_str = split_task_payload(callback.data, "eve_start:")
     sprint_time = int(time_str) if time_str.isdigit() else 20
     task_name = _resolve_evening_task(token, sprint_time)
+    if task_name is None:
+        await answer_unknown_task(callback, "Обновите /evening")
+        return
 
     res = timer.start_task(task_name=task_name, target_duration=sprint_time)
     if isinstance(res, dict) and res.get("status") == "error":

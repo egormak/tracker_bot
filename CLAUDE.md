@@ -57,7 +57,7 @@ Callback-query handlers and mid-FSM message handlers are generally *not* re-wrap
 
 Commands that need an argument (task name, minutes) support two paths in one handler:
 1. Argument given inline on the command line (e.g. `/restadd 30`) → resolve immediately, no state.
-2. No argument → show an inline keyboard or prompt, `state.set_state(...)`, then a second handler (registered for that state, or a `callback_query` matching a `"prefix:"` data string) completes the action and calls `state.clear()`. Build task-name callback data with `keyboards/callback.py::task_callback` (never an f-string — Telegram's 64-byte limit) and resolve it with `handlers/task_callback.py::resolve_task_token`.
+2. No argument → show an inline keyboard or prompt, `state.set_state(...)`, then a second handler (registered for that state, or a `callback_query` matching a `"prefix:"` data string) completes the action and calls `state.clear()`. Build task-name callback data with `keyboards/callback.py::task_callback` (never an f-string — Telegram's 64-byte limit) and resolve it with `handlers/task_callback.py::try_resolve_task_token`; it returns `None` for a hash that matches no task, and the handler must then call `answer_unknown_task` and stop instead of sending the raw `#hash` to the server.
 
 When adding a new stateful command, follow this same shape (see `handlers/timer.py::command_timer_start` / `process_timer_start`, or `handlers/rest.py::command_rest_add` / `process_rest_add`) rather than introducing a different state-management approach.
 

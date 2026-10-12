@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import Router, F
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -9,7 +8,7 @@ from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, C
 
 from tracker import general, timer, stats, rest, errors
 from keyboards.callback import task_callback
-from handlers.task_callback import resolve_task_token
+from handlers.task_callback import try_resolve_task_token, answer_unknown_task
 from keyboards.timer import (
     get_running_timer_keyboard,
     get_paused_timer_keyboard,
@@ -35,8 +34,8 @@ def parse_timer_status_string(status_text: str) -> tuple[str, bool] | None:
     return None
 
 
-def _resolve_callback_task(callback_data: str, prefix: str) -> str:
-    return resolve_task_token(callback_data[len(prefix):])
+def _resolve_callback_task(callback_data: str, prefix: str) -> str | None:
+    return try_resolve_task_token(callback_data[len(prefix):])
 
 
 @router.message(Command("timer_start"))
@@ -218,6 +217,11 @@ def _is_ignorable_telegram_error(e: Exception) -> bool:
     return "message is not modified" in msg or "message to edit not found" in msg
 
 
+async def _answer_unknown_task(callback: CallbackQuery) -> None:
+    # The button's hashed task name no longer matches any task: acting on it would hit the wrong timer.
+    await answer_unknown_task(callback, "Обновите /timer_status")
+
+
 async def _safe_edit_message_with_markup(
     callback: CallbackQuery,
     text: str,
@@ -225,130 +229,77 @@ async def _safe_edit_message_with_markup(
 ) -> None:
     try:
         await callback.message.edit_text(text, reply_markup=markup)
-    except TelegramBadRequest as e:
-        msg = str(e).lower()
-        if "message is not modified" in msg:
-            try:
-                await callback.message.edit_reply_markup(reply_markup=markup)
-            except TelegramBadRequest as sub_e:
-                if not _is_ignorable_telegram_error(sub_e):
-                    logger.warning("TelegramBadRequest editing reply markup: %s", sub_e)
-            except Exception as sub_e:
-                if not _is_ignorable_telegram_error(sub_e):
-                    logger.error("Unexpected error editing reply markup: %s", sub_e)
-        elif "message to edit not found" in msg:
-            pass
-        else:
-            logger.warning("TelegramBadRequest editing message text: %s", e)
+        return
     except Exception as e:
-        if _is_ignorable_telegram_error(e):
-            if "message is not modified" in str(e).lower():
-                try:
-                    await callback.message.edit_reply_markup(reply_markup=markup)
-                except Exception as sub_e:
-                    if not _is_ignorable_telegram_error(sub_e):
-                        logger.error("Unexpected error editing reply markup: %s", sub_e)
+        msg = str(e).lower()
+        if "message to edit not found" in msg:
+            return
+        if "message is not modified" not in msg:
+            logger.warning("Failed to edit message text, updating keyboard only: %s", e)
+    # The text could not be changed; the keyboard still has to match the new timer state.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=markup)
+    except Exception as e:
+        if not _is_ignorable_telegram_error(e):
+            logger.warning("Failed to edit reply markup: %s", e)
+
+
+async def _run_timer_action(
+    callback: CallbackQuery,
+    prefix: str,
+    action_fn,
+    verb: str,
+    toast: str,
+    keyboard_fn=None,
+) -> None:
+    task_name = _resolve_callback_task(callback.data, prefix)
+    if task_name is None:
+        await _answer_unknown_task(callback)
+        return
+
+    try:
+        res = action_fn(task_name)
+    except Exception:
+        logger.exception("Failed to %s timer for '%s'", verb, task_name)
+        res = f"Failed to {verb} timer: server unavailable."
+    failed = res.startswith("Failed")
+
+    try:
+        if failed:
+            await callback.answer()
         else:
-            logger.error("Unexpected error editing message text: %s", e)
+            await callback.answer(toast)
+    except Exception as e:
+        logger.warning("Failed to answer %s callback: %s", verb, e)
+
+    if failed or keyboard_fn is None:
+        try:
+            if failed:
+                # Leave the existing keyboard alone: the server state did not change.
+                await callback.message.edit_text(res, reply_markup=callback.message.reply_markup)
+            else:
+                await callback.message.edit_text(res)
+        except Exception as e:
+            if not _is_ignorable_telegram_error(e):
+                logger.warning("Failed to edit message after timer %s: %s", verb, e)
+        return
+
+    await _safe_edit_message_with_markup(callback, res, keyboard_fn(task_name))
 
 
 @router.callback_query(F.data.startswith("t_pause:"))
 async def process_timer_pause_callback(callback: CallbackQuery) -> None:
-    try:
-        await callback.answer("⏸ Пауза")
-    except TelegramBadRequest as e:
-        logger.warning("TelegramBadRequest answering pause callback: %s", e)
-    except Exception as e:
-        logger.warning("Unexpected error answering pause callback: %s", e)
-
-    task_name = _resolve_callback_task(callback.data, "t_pause:")
-    if task_name.startswith("#"):
-        task_name = ""
-    try:
-        res = timer.TimerPause(task_name)
-    except errors.InvalidStatusCode as e:
-        res = f"Failed to pause timer: {e.message}"
-    except Exception as e:
-        logger.error("Failed to pause timer due to unexpected error: %s", e)
-        res = f"Failed to pause timer: {e}"
-    if res.startswith("Failed"):
-        # Leave the existing keyboard alone: the server state did not change.
-        try:
-            await callback.message.edit_text(res, reply_markup=callback.message.reply_markup)
-        except TelegramBadRequest as e:
-            if not _is_ignorable_telegram_error(e):
-                logger.warning("TelegramBadRequest updating message on failure: %s", e)
-        except Exception as e:
-            if not _is_ignorable_telegram_error(e):
-                logger.error("Unexpected error updating message on failure: %s", e)
-        return
-
-    markup = get_paused_timer_keyboard(task_name)
-    await _safe_edit_message_with_markup(callback, res, markup)
+    await _run_timer_action(callback, "t_pause:", timer.TimerPause, "pause", "⏸ Пауза", get_paused_timer_keyboard)
 
 
 @router.callback_query(F.data.startswith("t_resume:"))
 async def process_timer_resume_callback(callback: CallbackQuery) -> None:
-    try:
-        await callback.answer("▶️ Возобновить")
-    except TelegramBadRequest as e:
-        logger.warning("TelegramBadRequest answering resume callback: %s", e)
-    except Exception as e:
-        logger.warning("Unexpected error answering resume callback: %s", e)
-
-    task_name = _resolve_callback_task(callback.data, "t_resume:")
-    if task_name.startswith("#"):
-        task_name = ""
-    try:
-        res = timer.TimerResume(task_name)
-    except errors.InvalidStatusCode as e:
-        res = f"Failed to resume timer: {e.message}"
-    except Exception as e:
-        logger.error("Failed to resume timer due to unexpected error: %s", e)
-        res = f"Failed to resume timer: {e}"
-    if res.startswith("Failed"):
-        # Leave the existing keyboard alone: the server state did not change.
-        try:
-            await callback.message.edit_text(res, reply_markup=callback.message.reply_markup)
-        except TelegramBadRequest as e:
-            if not _is_ignorable_telegram_error(e):
-                logger.warning("TelegramBadRequest updating message on failure: %s", e)
-        except Exception as e:
-            if not _is_ignorable_telegram_error(e):
-                logger.error("Unexpected error updating message on failure: %s", e)
-        return
-
-    markup = get_running_timer_keyboard(task_name)
-    await _safe_edit_message_with_markup(callback, res, markup)
+    await _run_timer_action(callback, "t_resume:", timer.TimerResume, "resume", "▶️ Возобновить", get_running_timer_keyboard)
 
 
 @router.callback_query(F.data.startswith("t_stop:"))
 async def process_timer_stop_callback(callback: CallbackQuery) -> None:
-    try:
-        await callback.answer("⏹ Стоп")
-    except TelegramBadRequest as e:
-        logger.warning("TelegramBadRequest answering stop callback: %s", e)
-    except Exception as e:
-        logger.warning("Unexpected error answering stop callback: %s", e)
-
-    task_name = _resolve_callback_task(callback.data, "t_stop:")
-    if task_name.startswith("#"):
-        task_name = ""
-    try:
-        res = timer.TimerStop(task_name)
-    except errors.InvalidStatusCode as e:
-        res = f"Failed to stop timer: {e.message}"
-    except Exception as e:
-        logger.error("Failed to stop timer due to unexpected error: %s", e)
-        res = f"Failed to stop timer: {e}"
-    try:
-        await callback.message.edit_text(res)
-    except TelegramBadRequest as e:
-        if not _is_ignorable_telegram_error(e):
-            logger.warning("TelegramBadRequest editing text on stop: %s", e)
-    except Exception as e:
-        if not _is_ignorable_telegram_error(e):
-            logger.error("Unexpected error editing text on stop: %s", e)
+    await _run_timer_action(callback, "t_stop:", timer.TimerStop, "stop", "⏹ Стоп")
 
 
 @router.callback_query(F.data.startswith("t_extend:"))
@@ -356,11 +307,14 @@ async def process_timer_extend_callback(callback: CallbackQuery) -> None:
     raw = callback.data[len("t_extend:"):]
     if ":" in raw:
         task_name, min_str = raw.rsplit(":", 1)
-        task_name = resolve_task_token(task_name)
+        task_name = try_resolve_task_token(task_name)
         minutes = int(min_str) if min_str.isdigit() else 15
     else:
-        task_name = resolve_task_token(raw)
+        task_name = try_resolve_task_token(raw)
         minutes = 15
+    if task_name is None:
+        await _answer_unknown_task(callback)
+        return
 
     res = timer.TimerStart(task_name, target_duration=minutes)
     await callback.answer(f"+{minutes} мин")
@@ -420,8 +374,11 @@ async def process_timer_switch_callback(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("t_start:"))
 async def process_timer_start_callback(callback: CallbackQuery, state: FSMContext = None) -> None:
-    await callback.answer()
     task_name = _resolve_callback_task(callback.data, "t_start:")
+    if task_name is None:
+        await _answer_unknown_task(callback)
+        return
+    await callback.answer()
     res = timer.TimerStart(task_name)
     if state:
         await state.clear()
@@ -442,8 +399,11 @@ async def process_timer_evening_top3(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("t_status:"))
 async def process_timer_status_callback(callback: CallbackQuery) -> None:
-    await callback.answer()
     task_name = _resolve_callback_task(callback.data, "t_status:")
+    if task_name is None:
+        await _answer_unknown_task(callback)
+        return
+    await callback.answer()
     try:
         status_text = timer.TimerStatus(task_name)
     except errors.InvalidStatusCode as e:

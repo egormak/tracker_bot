@@ -16,11 +16,15 @@ def format_ramp_message(status: dict | RampStatus) -> str:
     if isinstance(status, RampStatus):
         current_step = status.current_step
         today_focus_minutes = status.today_focus_minutes
+        reset_baseline_minutes = status.reset_baseline_minutes
+        effective_focus_minutes = status.effective_focus_minutes
         cap_minutes = status.cap_minutes
         roles = status.config.enabled_roles
     elif isinstance(status, dict):
         current_step = status.get("current_step", 1)
         today_focus_minutes = status.get("today_focus_minutes", 0)
+        reset_baseline_minutes = status.get("reset_baseline_minutes", 0) or 0
+        effective_focus_minutes = status.get("effective_focus_minutes", 0) or 0
         cap_minutes = status.get("cap_minutes", 25)
         cfg = status.get("config", {})
         if isinstance(cfg, dict):
@@ -32,6 +36,8 @@ def format_ramp_message(status: dict | RampStatus) -> str:
     else:
         current_step = 1
         today_focus_minutes = 0
+        reset_baseline_minutes = 0
+        effective_focus_minutes = 0
         cap_minutes = 25
         roles = []
 
@@ -42,10 +48,13 @@ def format_ramp_message(status: dict | RampStatus) -> str:
     else:
         enabled_roles = ""
 
+    # After a manual reset the step follows the focus logged since the reset
+    since_reset = f" (после сброса: {effective_focus_minutes} мин)" if reset_baseline_minutes > 0 else ""
+
     return (
         "⚡️ Лестница линейного разгона (Warm-Up Ramp)\n"
         f"• Текущая ступень: {current_step} мин\n"
-        f"• Фокус сегодня: {today_focus_minutes} мин\n"
+        f"• Фокус сегодня: {today_focus_minutes} мин{since_reset}\n"
         f"• Потолок: {cap_minutes} мин\n"
         f"• Активные роли: {enabled_roles}"
     )

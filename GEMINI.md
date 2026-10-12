@@ -110,7 +110,7 @@ The callback handlers in `handlers/timer.py` and keyboards in `keyboards/timer.p
 
 Telegram rejects messages if any button's `callback_data` exceeds 64 UTF-8 bytes.
 - Task names that would exceed this limit are truncated to `#<sha1[:12]>` using `keyboards/callback.py::task_callback`.
-- When callbacks are received, `handlers/task_callback.py::resolve_task_token` resolves hashed tokens back to full task names using candidates from evening focus, active timers, or today's task list.
+- When callbacks are received, `handlers/task_callback.py::try_resolve_task_token` resolves hashed tokens back to full task names using candidates from evening focus, active timers, or today's task list; it returns `None` when nothing matches, and the handler then answers with `answer_unknown_task` and does not call the server.
 - Payloads with suffixes use `split_task_payload(callback_data, prefix)`, splitting from the right (`rsplit(":", 1)`) so task names containing colons are preserved.
 
 ## Development Conventions

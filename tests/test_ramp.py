@@ -28,6 +28,21 @@ def test_format_ramp_message_dict():
     assert msg == expected
 
 
+def test_format_ramp_message_after_manual_reset():
+    status = {
+        "current_step": 1,
+        "today_focus_minutes": 45,
+        "reset_baseline_minutes": 45,
+        "effective_focus_minutes": 0,
+        "cap_minutes": 25,
+        "config": {"enabled_roles": ["work"]},
+    }
+    assert "• Фокус сегодня: 45 мин (после сброса: 0 мин)\n" in ramp_handler.format_ramp_message(status)
+
+    model = RampStatus(current_step=2, today_focus_minutes=48, reset_baseline_minutes=45, effective_focus_minutes=3)
+    assert "• Фокус сегодня: 48 мин (после сброса: 3 мин)\n" in ramp_handler.format_ramp_message(model)
+
+
 def test_format_ramp_message_model():
     status = RampStatus(
         current_step=4,

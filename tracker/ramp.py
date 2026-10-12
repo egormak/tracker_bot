@@ -19,6 +19,8 @@ class RampStatus(BaseModel):
     cap_minutes: int = 25
     is_capped: bool = False
     today_focus_minutes: int = 0
+    reset_baseline_minutes: int = 0
+    effective_focus_minutes: int = 0
     date: str = ""
     config: RampConfig = Field(default_factory=RampConfig)
 

@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 
 from tracker import general, task_record, errors, stats
 from keyboards.callback import task_callback
-from handlers.task_callback import resolve_task_token
+from handlers.task_callback import try_resolve_task_token, answer_unknown_task
 
 router = Router()
 
@@ -42,7 +42,11 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
 @router.callback_query(lambda c: c.data.startswith("task:"))
 # @general.telegram_auth
 async def task_handler(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.update_data(task=resolve_task_token(callback.data[len("task:"):]))
+    task_name = try_resolve_task_token(callback.data[len("task:"):])
+    if task_name is None:
+        await answer_unknown_task(callback, "Откройте список задач заново")
+        return
+    await state.update_data(task=task_name)
     await state.set_state(TaskRecord.time)
     await callback.message.edit_text("Enter time in minutes")
 

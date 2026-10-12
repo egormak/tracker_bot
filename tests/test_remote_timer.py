@@ -567,35 +567,88 @@ def test_callback_t_pause_failure_keeps_keyboard():
     asyncio.run(run())
 
 
-def test_callback_t_pause_unresolved_hash():
+UNKNOWN_TASK_ALERT = "Задача не найдена. Обновите /timer_status"
+
+
+def _stale_hash_callback(data):
+    callback = MagicMock()
+    callback.data = data
+    callback.message = MagicMock()
+    callback.message.edit_text = AsyncMock()
+    callback.message.edit_reply_markup = AsyncMock()
+    callback.answer = AsyncMock()
+    return callback
+
+
+def _assert_refused(callback, mock_action):
+    mock_action.assert_not_called()
+    callback.answer.assert_called_once_with(UNKNOWN_TASK_ALERT, show_alert=True)
+    callback.message.edit_text.assert_not_called()
+    callback.message.edit_reply_markup.assert_not_called()
+
+
+def test_callback_unresolved_hash_refuses_to_act():
+    cases = [
+        ("t_pause:#123456789abc", "tracker.timer.TimerPause", timer_handler.process_timer_pause_callback),
+        ("t_resume:#123456789abc", "tracker.timer.TimerResume", timer_handler.process_timer_resume_callback),
+        ("t_stop:#123456789abc", "tracker.timer.TimerStop", timer_handler.process_timer_stop_callback),
+        ("t_start:#123456789abc", "tracker.timer.TimerStart", timer_handler.process_timer_start_callback),
+        ("t_extend:#123456789abc:15", "tracker.timer.TimerStart", timer_handler.process_timer_extend_callback),
+        ("t_extend:#123456789abc", "tracker.timer.TimerStart", timer_handler.process_timer_extend_callback),
+        ("t_status:#123456789abc", "tracker.timer.TimerStatus", timer_handler.process_timer_status_callback),
+    ]
+
     async def run():
-        with patch("tracker.timer.TimerPause", return_value="Timer paused.") as mock_pause, \
-             patch("tracker.timer.TimerList", return_value=[]), \
-             patch("tracker.stats.GetTaskList", return_value=[]):
-            callback = MagicMock()
-            callback.data = "t_pause:#123456789abc"
-            callback.message = MagicMock()
-            callback.message.edit_text = AsyncMock()
-            callback.answer = AsyncMock()
-
-            await timer_handler.process_timer_pause_callback(callback)
-
-            mock_pause.assert_called_once_with("")
-            callback.answer.assert_called_once_with("⏸ Пауза")
-            callback.message.edit_text.assert_called_once()
-            text = callback.message.edit_text.call_args[0][0]
-            markup = callback.message.edit_text.call_args[1]["reply_markup"]
-            assert "Timer paused." in text
-            assert len(markup.inline_keyboard) == 1
-            row = markup.inline_keyboard[0]
-            assert row[0].text == "▶️ Возобновить"
-            assert row[0].callback_data == "t_resume:"
-            assert row[1].text == "⏹ Стоп"
-            assert row[1].callback_data == "t_stop:"
-            assert row[2].text == "🔄 Сменить"
-            assert row[2].callback_data == "t_switch"
+        for data, target, handler in cases:
+            with patch(target) as mock_action, \
+                 patch("tracker.timer.TimerList", return_value=[{"task_name": "other", "is_running": True}]), \
+                 patch("tracker.stats.GetTaskList", return_value=[]):
+                callback = _stale_hash_callback(data)
+                await handler(callback)
+                _assert_refused(callback, mock_action)
 
     asyncio.run(run())
+
+
+def test_callback_unresolved_hash_when_task_lookup_fails():
+    async def run():
+        with patch("tracker.timer.TimerStop") as mock_stop, \
+             patch("tracker.timer.TimerList", side_effect=Exception("Connection refused")), \
+             patch("tracker.stats.GetTaskList", side_effect=Exception("Connection refused")):
+            callback = _stale_hash_callback("t_stop:#123456789abc")
+            await timer_handler.process_timer_stop_callback(callback)
+            _assert_refused(callback, mock_stop)
+
+    asyncio.run(run())
+
+
+def test_callback_t_pause_task_name_starting_with_hash_marker():
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused for '#standup'.") as mock_pause:
+            callback = _stale_hash_callback("t_pause:#standup")
+            await timer_handler.process_timer_pause_callback(callback)
+
+            mock_pause.assert_called_once_with("#standup")
+            row = callback.message.edit_text.call_args[1]["reply_markup"].inline_keyboard[0]
+            assert row[0].callback_data == "t_resume:#standup"
+            assert row[1].callback_data == "t_stop:#standup"
+
+    asyncio.run(run())
+
+
+def test_try_resolve_task_token():
+    from handlers.task_callback import try_resolve_task_token
+    from keyboards.callback import task_hash
+
+    token = f"#{task_hash(LONG_TASK)}"
+    with patch("tracker.timer.TimerList", return_value=[{"task_name": LONG_TASK}, {"task_name": "#123456789abc"}]), \
+         patch("tracker.stats.GetTaskList", return_value=[]):
+        assert try_resolve_task_token("coding") == "coding"
+        assert try_resolve_task_token("#standup") == "#standup"
+        assert try_resolve_task_token(token) == LONG_TASK
+        # A task whose own name looks like a hash payload
+        assert try_resolve_task_token("#123456789abc") == "#123456789abc"
+        assert try_resolve_task_token("#ffffffffffff") is None
 
 
 def test_callback_t_pause_edit_text_exception_fallback():
@@ -615,6 +668,8 @@ def test_callback_t_pause_edit_text_exception_fallback():
             callback.message.edit_text.assert_called_once()
             callback.message.edit_reply_markup.assert_called_once()
 
+    asyncio.run(run())
+
 
 def test_callback_t_pause_both_edits_fail_safe():
     async def run():
@@ -622,13 +677,32 @@ def test_callback_t_pause_both_edits_fail_safe():
             callback = MagicMock()
             callback.data = "t_pause:coding"
             callback.message = MagicMock()
-            callback.message.edit_text = AsyncMock(side_effect=Exception("TelegramBadRequest: message to edit not found"))
+            callback.message.edit_text = AsyncMock(side_effect=Exception("TelegramBadRequest: message is not modified"))
             callback.message.edit_reply_markup = AsyncMock(side_effect=Exception("TelegramBadRequest: message to edit not found"))
             callback.answer = AsyncMock()
 
             # Should not raise exception
             await timer_handler.process_timer_pause_callback(callback)
             callback.answer.assert_called_once_with("⏸ Пауза")
+            callback.message.edit_reply_markup.assert_called_once()
+
+    asyncio.run(run())
+
+
+def test_callback_t_pause_message_deleted_skips_markup_fallback():
+    async def run():
+        with patch("tracker.timer.TimerPause", return_value="Timer paused."):
+            callback = MagicMock()
+            callback.data = "t_pause:coding"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock(side_effect=Exception("TelegramBadRequest: message to edit not found"))
+            callback.message.edit_reply_markup = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_pause_callback(callback)
+            callback.message.edit_reply_markup.assert_not_called()
+
+    asyncio.run(run())
 
 
 def test_callback_t_pause_server_exception_safe():
@@ -637,44 +711,38 @@ def test_callback_t_pause_server_exception_safe():
             callback = MagicMock()
             callback.data = "t_pause:coding"
             callback.message = MagicMock()
-            callback.message.reply_markup = MagicMock()
+            original = get_running_timer_keyboard("coding")
+            callback.message.reply_markup = original
             callback.message.edit_text = AsyncMock()
             callback.answer = AsyncMock()
 
             # Should not crash
             await timer_handler.process_timer_pause_callback(callback)
-            callback.answer.assert_called_once_with("⏸ Пауза")
-            callback.message.edit_text.assert_called_once()
-            assert "Failed to pause timer" in callback.message.edit_text.call_args[0][0]
+            # No success toast, and no raw exception text leaked into the chat
+            callback.answer.assert_called_once_with()
+            callback.message.edit_text.assert_called_once_with(
+                "Failed to pause timer: server unavailable.", reply_markup=original
+            )
+
+    asyncio.run(run())
 
 
-def test_callback_t_resume_unresolved_hash():
+def test_callback_t_stop_failure_keeps_keyboard():
     async def run():
-        with patch("tracker.timer.TimerResume", return_value="Timer resumed.") as mock_resume, \
-             patch("tracker.timer.TimerList", return_value=[]), \
-             patch("tracker.stats.GetTaskList", return_value=[]):
+        with patch("tracker.timer.TimerStop", return_value="Failed to stop timer: status code 500"):
             callback = MagicMock()
-            callback.data = "t_resume:#123456789abc"
+            callback.data = "t_stop:coding"
             callback.message = MagicMock()
+            original = get_running_timer_keyboard("coding")
+            callback.message.reply_markup = original
             callback.message.edit_text = AsyncMock()
             callback.answer = AsyncMock()
 
-            await timer_handler.process_timer_resume_callback(callback)
-
-            mock_resume.assert_called_once_with("")
-            callback.answer.assert_called_once_with("▶️ Возобновить")
-            callback.message.edit_text.assert_called_once()
-            text = callback.message.edit_text.call_args[0][0]
-            markup = callback.message.edit_text.call_args[1]["reply_markup"]
-            assert "Timer resumed." in text
-            assert len(markup.inline_keyboard) == 1
-            row = markup.inline_keyboard[0]
-            assert row[0].text == "⏸ Пауза"
-            assert row[0].callback_data == "t_pause:"
-            assert row[1].text == "⏹ Стоп"
-            assert row[1].callback_data == "t_stop:"
-            assert row[2].text == "🔄 Сменить"
-            assert row[2].callback_data == "t_switch"
+            await timer_handler.process_timer_stop_callback(callback)
+            callback.answer.assert_called_once_with()
+            callback.message.edit_text.assert_called_once_with(
+                "Failed to stop timer: status code 500", reply_markup=original
+            )
 
     asyncio.run(run())
 
@@ -702,20 +770,22 @@ def test_callback_t_pause_telegram_bad_request_not_modified():
     asyncio.run(run())
 
 
-def test_callback_t_pause_unexpected_edit_error_logged():
+def test_callback_t_pause_unexpected_edit_error_still_swaps_keyboard():
     async def run():
         with patch("tracker.timer.TimerPause", return_value="Timer paused."), \
-             patch("handlers.timer.logger.error") as mock_logger:
+             patch("handlers.timer.logger.warning") as mock_logger:
             callback = MagicMock()
             callback.data = "t_pause:coding"
             callback.message = MagicMock()
             callback.message.edit_text = AsyncMock(side_effect=RuntimeError("Unexpected Telegram API error"))
+            callback.message.edit_reply_markup = AsyncMock()
             callback.answer = AsyncMock()
 
             await timer_handler.process_timer_pause_callback(callback)
 
             mock_logger.assert_called_once()
-            assert "Unexpected error editing message" in mock_logger.call_args[0][0]
+            markup = callback.message.edit_reply_markup.call_args[1]["reply_markup"]
+            assert markup.inline_keyboard[0][0].callback_data == "t_resume:coding"
 
     asyncio.run(run())
 
@@ -775,5 +845,27 @@ def test_task_record_invalid_time_reprompts():
             mock_add.assert_not_called()
             state.clear.assert_not_called()
             assert "positive whole number" in message.answer.call_args[0][0]
+
+    asyncio.run(run())
+
+
+def test_task_record_callback_unresolved_hash_refuses():
+    from handlers import task_record as task_record_handler
+
+    async def run():
+        with patch("tracker.timer.TimerList", return_value=[]), \
+             patch("tracker.stats.GetTaskList", return_value=[]):
+            callback = _stale_hash_callback("task:#123456789abc")
+            state = MagicMock()
+            state.update_data = AsyncMock()
+            state.set_state = AsyncMock()
+
+            await task_record_handler.task_handler(callback, state)
+            callback.answer.assert_called_once_with(
+                "Задача не найдена. Откройте список задач заново", show_alert=True
+            )
+            state.update_data.assert_not_called()
+            state.set_state.assert_not_called()
+            callback.message.edit_text.assert_not_called()
 
     asyncio.run(run())

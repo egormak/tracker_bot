@@ -331,3 +331,28 @@ def test_process_evening_start_name_with_colon():
             mock_start.assert_called_once_with(task_name="ch:1", target_duration=15)
 
     asyncio.run(run())
+
+
+def test_evening_callbacks_unresolved_hash_refuse_to_act():
+    cases = [
+        ("eve_skip:#123456789abc:20", "tracker.evening.skip_evening_task", evening_handler.process_evening_skip),
+        ("eve_start:#123456789abc:20", "tracker.timer.start_task", evening_handler.process_evening_start),
+    ]
+
+    async def run():
+        for data, action, handler in cases:
+            with patch("tracker.evening.get_evening_focus", return_value={"candidates": [{"task_name": "other"}]}), \
+                 patch("tracker.timer.TimerList", return_value=[]), \
+                 patch("tracker.stats.GetTaskList", return_value=[]), \
+                 patch(action) as mock_action:
+                callback = MagicMock()
+                callback.data = data
+                callback.message.edit_text = AsyncMock()
+                callback.answer = AsyncMock()
+
+                await handler(callback)
+                mock_action.assert_not_called()
+                callback.answer.assert_called_once_with("Задача не найдена. Обновите /evening", show_alert=True)
+                callback.message.edit_text.assert_not_called()
+
+    asyncio.run(run())
