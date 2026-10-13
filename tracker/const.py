@@ -4,6 +4,7 @@ ADMIN_ID = 234872620
 # URL = "http://tracker.makegorka.com:8080"
 STATS_URI = f"{config.config['app_url']}/api/v1/records"
 TASK_RECORD_URI = f"{config.config['app_url']}/api/v1/taskrecord"
+WEEKLY_DIGEST_URI = f"{config.config['app_url']}/api/v1/stats/weekly/digest"
 TASK_LIST_URI = f"{config.config['app_url']}/api/v1/tasklist"
 TASK_PLAN_PERCENT = f"{config.config['app_url']}/api/v1/task/plan/percent"
 TASK_PLAN_PERCENT_SCHEDULE = f"{config.config['app_url']}/api/v1/task/plan/percent/schedule"
@@ -24,6 +25,7 @@ TASK_PLAN_ROTATE = f"{config.config['app_url']}/api/v1/task/plan/rotate"
 
 EVENING_FOCUS_URI = f"{config.config['app_url']}/api/v1/mode/evening-focus"
 EVENING_SKIP_URI = f"{config.config['app_url']}/api/v1/mode/evening-focus/skip"
+BREAK_OPTIONS_URI = f"{config.config['app_url']}/api/v1/mode/break-options"
 
 RAMP_STATUS_URI = f"{config.config['app_url']}/api/v1/ramp/status"
 RAMP_RESET_URI = f"{config.config['app_url']}/api/v1/ramp/reset"

@@ -33,7 +33,11 @@ def test_build_evening_keyboard_3_candidates():
         {"task_name": "task_three_longname"},
     ]
     markup = evening_handler.build_evening_keyboard(candidates, sprint_time=20)
-    assert len(markup.inline_keyboard) == 3
+    assert len(markup.inline_keyboard) == 4
+
+    # Row 4: mood-driven break selector
+    row4 = markup.inline_keyboard[3]
+    assert [(b.text, b.callback_data) for b in row4] == [("🎲 По настроению", "brk_menu")]
 
     # Row 1: individual launch buttons with name[:10]
     row1 = markup.inline_keyboard[0]

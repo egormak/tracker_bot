@@ -57,6 +57,7 @@ def build_evening_keyboard(candidates, sprint_time: int = 20) -> InlineKeyboardM
         InlineKeyboardButton(text="⏱️ 30m", callback_data="eve_time:30"),
     ]
     buttons.append(row3)
+    buttons.append([InlineKeyboardButton(text="🎲 По настроению", callback_data="brk_menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

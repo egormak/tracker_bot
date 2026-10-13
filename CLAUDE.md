@@ -43,6 +43,10 @@ Two-layer split, mirrored 1:1 by module name:
 
 The bot doesn't only answer its own commands: `tracker-server` (`internal/notify/telegram`) sends messages directly to the admin chat with inline buttons — running-timer remote (`t_pause:`/`t_stop:`) and the session-completion push card (`t_start:`, `t_extend:<task>:<min>`, `t_rest:<min>`, `t_evening_top3`). The `t_*` callback handlers in `handlers/timer.py` must keep accepting exactly what the server emits; `keyboards/timer.py` mirrors the same layouts for bot-sent messages. Changing a `t_*` prefix or payload shape requires a matching change in `tracker-server`.
 
+Break selector (`handlers/breaks.py`, `keyboards/breaks.py`): `/break`, the `brk_menu` button under `/evening`, and the `t_brk:<task>:<min>` / `t_brkdur:<min>` buttons the server puts on the completion card after a `work`/`learn` task. Picking a duration does not refetch anything — `with_break_duration` rewrites the buttons of the message's own keyboard, so it works on the server-built card as well. Layout constants mirror `breakSelectorRows` in `tracker-server/internal/notify/telegram`.
+
+Weekly digest: `/week [prev]` and the `week_digest` button (added by the server to the completion card on Sundays) render `GET /api/v1/stats/weekly/digest` via `tracker/stats.py::FormatWeeklyDigest`.
+
 Handler → tracker call convention: handlers import the sibling `tracker` module and call its functions directly (e.g. `handlers/timer.py` calls `tracker.timer.TimerStart(...)`); business logic and URL construction never live in `handlers/`.
 
 ### Auth

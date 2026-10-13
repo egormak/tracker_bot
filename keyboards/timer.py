@@ -1,5 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
+from .breaks import get_break_selector_rows
 from .callback import task_callback
 
 
@@ -34,6 +35,8 @@ def get_completion_push_card_keyboard(
     next_task: str = "",
     extend_minutes: int = 15,
     rest_minutes: int = 10,
+    break_options: list[dict] | None = None,
+    weekly_digest: bool = False,
 ) -> InlineKeyboardMarkup:
     """Returns inline keyboard for session completion push card."""
     buttons = []
@@ -41,6 +44,7 @@ def get_completion_push_card_keyboard(
         buttons.append([
             InlineKeyboardButton(text=f"▶️ Запустить {next_task}", callback_data=task_callback("t_start", next_task))
         ])
+    buttons.extend(get_break_selector_rows(break_options or []))
     buttons.append([
         InlineKeyboardButton(text=f"☕️ Перерыв {rest_minutes}м", callback_data=f"t_rest:{rest_minutes}"),
         InlineKeyboardButton(text=f"⏳ Продлить +{extend_minutes}м", callback_data=task_callback("t_extend", current_task, f":{extend_minutes}")),
@@ -48,4 +52,7 @@ def get_completion_push_card_keyboard(
     buttons.append([
         InlineKeyboardButton(text="🌙 Вечерний топ-3", callback_data="t_evening_top3")
     ])
+    if weekly_digest:
+        # The server adds this row on Sundays.
+        buttons.append([InlineKeyboardButton(text="📊 Итоги недели", callback_data="week_digest")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
