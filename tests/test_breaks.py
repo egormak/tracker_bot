@@ -94,7 +94,7 @@ def test_callback_break_start_uses_selected_duration():
             callback = _callback("t_brk:games:20")
             await breaks_handler.process_break_start(callback)
 
-            mock_start.assert_called_once_with("games", target_duration=20)
+            mock_start.assert_called_once_with("games", target_duration=20, origin="break")
             callback.answer.assert_called_once()
             assert callback.message.edit_text.call_args[0][0] == "☕️ 'games' запущена на 20 мин."
 
@@ -118,7 +118,7 @@ def test_callback_break_start_resolves_hashed_name():
              patch("tracker.timer.TimerStart", return_value="Started") as mock_start:
             callback = _callback(f"t_brk:#{task_hash(LONG_TASK)}:30")
             await breaks_handler.process_break_start(callback)
-            mock_start.assert_called_once_with(LONG_TASK, target_duration=30)
+            mock_start.assert_called_once_with(LONG_TASK, target_duration=30, origin="break")
 
     asyncio.run(run())
 

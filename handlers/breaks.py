@@ -74,7 +74,7 @@ async def process_break_start(callback: CallbackQuery) -> None:
         await answer_unknown_task(callback, "Откройте /break заново")
         return
 
-    res = timer.TimerStart(task_name, target_duration=minutes)
+    res = timer.TimerStart(task_name, target_duration=minutes, origin="break")
     await callback.answer()
     try:
         if res.startswith("Failed"):

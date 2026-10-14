@@ -188,7 +188,7 @@ def test_process_evening_combo_3_steps():
 
             await evening_handler.process_evening_combo(callback)
 
-            mock_start.assert_called_with(task_name="task_1", target_duration=10)
+            mock_start.assert_called_with(task_name="task_1", target_duration=10, origin="combo")
             callback.message.edit_text.assert_called_once()
             args, kwargs = callback.message.edit_text.call_args
             text = args[0]
@@ -207,7 +207,7 @@ def test_process_evening_combo_3_steps():
 
             await evening_handler.process_evening_combo(callback)
 
-            mock_start.assert_called_with(task_name="task_2", target_duration=10)
+            mock_start.assert_called_with(task_name="task_2", target_duration=10, origin="combo")
             callback.message.edit_text.assert_called_once()
             args, kwargs = callback.message.edit_text.call_args
             text = args[0]
@@ -226,7 +226,7 @@ def test_process_evening_combo_3_steps():
 
             await evening_handler.process_evening_combo(callback)
 
-            mock_start.assert_called_with(task_name="task_3", target_duration=10)
+            mock_start.assert_called_with(task_name="task_3", target_duration=10, origin="combo")
             callback.message.edit_text.assert_called_once()
             text = callback.message.edit_text.call_args[0][0]
 
@@ -255,7 +255,7 @@ def test_process_evening_combo_single_candidate():
 
             await evening_handler.process_evening_combo(callback)
 
-            mock_start.assert_called_once_with(task_name="only_task", target_duration=10)
+            mock_start.assert_called_once_with(task_name="only_task", target_duration=10, origin="combo")
             text = callback.message.edit_text.call_args[0][0]
             assert text == "⚡️ Запущен спринт комбо! Шаг 1/1: only_task (10 мин)."
             assert user_id not in evening_handler.COMBO_SESSIONS
@@ -289,7 +289,7 @@ def test_process_evening_start():
 
             await evening_handler.process_evening_start(callback)
 
-            mock_start.assert_called_once_with(task_name="task_1", target_duration=20)
+            mock_start.assert_called_once_with(task_name="task_1", target_duration=20, origin="evening")
             callback.message.edit_text.assert_called_once_with("🚀 Запущен вечерний спринт по 'task_1' на 20 минут!")
             callback.answer.assert_called_once()
 
@@ -318,7 +318,7 @@ def test_process_evening_start_resolves_hashed_name():
             callback.answer = AsyncMock()
 
             await evening_handler.process_evening_start(callback)
-            mock_start.assert_called_once_with(task_name=LONG_TASK, target_duration=30)
+            mock_start.assert_called_once_with(task_name=LONG_TASK, target_duration=30, origin="evening")
 
     asyncio.run(run())
 
@@ -332,7 +332,7 @@ def test_process_evening_start_name_with_colon():
             callback.answer = AsyncMock()
 
             await evening_handler.process_evening_start(callback)
-            mock_start.assert_called_once_with(task_name="ch:1", target_duration=15)
+            mock_start.assert_called_once_with(task_name="ch:1", target_duration=15, origin="evening")
 
     asyncio.run(run())
 

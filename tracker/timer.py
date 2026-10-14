@@ -1,12 +1,15 @@
 import requests
 from . import const, errors
 
-def TimerStart(task_name: str, group_name: str = "", target_duration: int = 0) -> str:
+def TimerStart(task_name: str, group_name: str = "", target_duration: int = 0, origin: str = "") -> str:
+    """Start a task. `origin` ("break", "evening", "combo") feeds the server's weekly usage counters."""
     data = {"task_name": task_name}
     if group_name:
         data["group_name"] = group_name
     if target_duration:
         data["target_duration"] = target_duration
+    if origin:
+        data["origin"] = origin
 
     response = requests.post(const.TIMER_RUN_START, json=data)
     
@@ -99,12 +102,14 @@ def TimerAdjust(task_name: str, delta_minutes: int) -> str:
         return f"Failed to adjust timer: status code {response.status_code}"
 
 
-def start_task(task_name: str, target_duration: int = 0, role: str = "") -> dict:
+def start_task(task_name: str, target_duration: int = 0, role: str = "", origin: str = "") -> dict:
     data = {"task_name": task_name}
     if target_duration:
         data["target_duration"] = target_duration
     if role:
         data["role"] = role
+    if origin:
+        data["origin"] = origin
     try:
         response = requests.post(const.TIMER_RUN_START, json=data)
         if response.status_code == 200:

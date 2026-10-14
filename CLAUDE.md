@@ -45,6 +45,8 @@ The bot doesn't only answer its own commands: `tracker-server` (`internal/notify
 
 Break selector (`handlers/breaks.py`, `keyboards/breaks.py`): `/break`, the `brk_menu` button under `/evening`, and the `t_brk:<task>:<min>` / `t_brkdur:<min>` buttons the server puts on the completion card after a `work`/`learn` task. Picking a duration does not refetch anything — `with_break_duration` rewrites the buttons of the message's own keyboard, so it works on the server-built card as well. Layout constants mirror `breakSelectorRows` in `tracker-server/internal/notify/telegram`.
 
+Client name: `tracker/client_header.py::install()` (called from `main()`) patches `requests.Session.request` to add `X-Tracker-Client: bot` to every request to `app_url` — the tracker modules call `requests.*` directly, so there is no shared session to configure; tests do not install it. `timer.TimerStart` / `timer.start_task` take `origin` (`"break"`, `"evening"`, `"combo"`) for the server's weekly usage counters. `FormatWeeklyDigest` does not render the digest's `clients` / `usage` blocks.
+
 Weekly digest: `/week [prev]` and the `week_digest` button (added by the server to the completion card on Sundays) render `GET /api/v1/stats/weekly/digest` via `tracker/stats.py::FormatWeeklyDigest`.
 
 Handler → tracker call convention: handlers import the sibling `tracker` module and call its functions directly (e.g. `handlers/timer.py` calls `tracker.timer.TimerStart(...)`); business logic and URL construction never live in `handlers/`.

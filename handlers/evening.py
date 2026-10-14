@@ -157,7 +157,7 @@ async def process_evening_combo(callback: CallbackQuery):
         combo_time = session["combo_time"]
 
         task_name = candidates[cur_step - 1]
-        res = timer.start_task(task_name=task_name, target_duration=combo_time)
+        res = timer.start_task(task_name=task_name, target_duration=combo_time, origin="combo")
         if isinstance(res, dict) and res.get("status") == "error":
             await callback.message.edit_text(f"❌ Ошибка при запуске: {res.get('message', 'Unknown error')}")
             await callback.answer()
@@ -197,7 +197,7 @@ async def process_evening_combo(callback: CallbackQuery):
 
     total_steps = len(top)
     task_1 = top[0].get("task_name", "")
-    res = timer.start_task(task_name=task_1, target_duration=combo_time)
+    res = timer.start_task(task_name=task_1, target_duration=combo_time, origin="combo")
     if isinstance(res, dict) and res.get("status") == "error":
         await callback.message.edit_text(f"❌ Ошибка при запуске: {res.get('message', 'Unknown error')}")
         await callback.answer()
@@ -236,7 +236,7 @@ async def process_evening_start(callback: CallbackQuery):
         await answer_unknown_task(callback, "Обновите /evening")
         return
 
-    res = timer.start_task(task_name=task_name, target_duration=sprint_time)
+    res = timer.start_task(task_name=task_name, target_duration=sprint_time, origin="evening")
     if isinstance(res, dict) and res.get("status") == "error":
         await callback.message.edit_text(f"❌ Ошибка при запуске: {res.get('message', 'Unknown error')}")
     else:

@@ -5,7 +5,7 @@ import sys
 from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
 
-from tracker import task_record, general
+from tracker import task_record, general, client_header
 from handlers import task_record, statistic, begin, rest, timer, evening, ramp, breaks
 import config
 
@@ -29,6 +29,7 @@ import config
 
 
 async def main() -> None:
+    client_header.install()
     # Dispatcher is a root router
     dp = Dispatcher()
     # ... and all other routers should be attached to Dispatcher
