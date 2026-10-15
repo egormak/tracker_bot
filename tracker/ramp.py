@@ -11,7 +11,7 @@ class RampConfig(BaseModel):
     enabled_roles: list[str] = Field(default_factory=list)
     enabled_tasks: list[str] = Field(default_factory=list)
     excluded_tasks: list[str] = Field(default_factory=list)
-    default_rest_fallback: int = 15
+    default_fallback_minutes: int = 15
 
 
 class RampStatus(BaseModel):

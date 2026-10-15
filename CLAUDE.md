@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Telegram bot (aiogram v3) that is a thin client for a separate "tracker" HTTP API (`app_url` in config). It lets a single admin user record tasks, run per-task timers, manage rest minutes, and view stats/plan progress from Telegram. There are no local models or a database here — all state lives behind the tracker API; this bot only formats Telegram interactions and makes HTTP calls.
+A Telegram bot (aiogram v3) that is a thin client for a separate "tracker" HTTP API (`app_url` in config). It lets a single admin user record tasks, run per-task timers, and view stats/plan progress from Telegram. There are no local models or a database here — all state lives behind the tracker API; this bot only formats Telegram interactions and makes HTTP calls.
 
 ## Commands
 
@@ -33,7 +33,7 @@ Production images are published via `.github/workflows/docker-publish.yml` on pu
 
 Two-layer split, mirrored 1:1 by module name:
 
-- `handlers/` — aiogram `Router`s: Telegram-facing concerns only (commands, FSM states, inline keyboards, formatting replies). One router per domain: `begin.py` (start/help/webapp), `task_record.py`, `timer.py`, `rest.py`, `statistic.py`, `evening.py` (`/evening` focus triage: top-3 weekly-deficit tasks, `eve_*` callbacks), `ramp.py` (`/ramp` warm-up ramp status/reset). `handlers/task_callback.py` is a shared helper, not a router.
+- `handlers/` — aiogram `Router`s: Telegram-facing concerns only (commands, FSM states, inline keyboards, formatting replies). One router per domain: `begin.py` (start/help/webapp), `task_record.py`, `timer.py`, `statistic.py`, `evening.py` (`/evening` focus triage: top-3 weekly-deficit tasks, `eve_*` callbacks), `ramp.py` (`/ramp` warm-up ramp status/reset). `handlers/task_callback.py` is a shared helper, not a router.
 - `tracker/` — plain functions that call the external tracker HTTP API via `requests` and return already-formatted strings (or raise). One module per domain, matching `handlers/` (`stats.py` ↔ `statistic.py`), plus `evening.py`, `const.py` (all endpoint URLs, built from `config.config['app_url']`), `errors.py` (`InvalidStatusCode`), and `general.py` (auth decorators). `tracker/ramp.py` is the one module that parses responses into pydantic models (`RampStatus`/`RampConfig`).
 - `keyboards/` — reusable `InlineKeyboardMarkup` builders (`timer.py`, `ramp.py`) and `callback.py` (callback-data encoding). Some handlers still build keyboards inline (e.g. `handlers/evening.py::build_evening_keyboard`).
 - `config/__init__.py` — loads `config.yaml` from the **current working directory** at import time into `config.config` (a dict). `tracker/const.py` reads from this at import time, so `config.yaml` must exist (and you must run from the repo root) before anything under `tracker/` is imported — this applies to tests too.
@@ -41,7 +41,7 @@ Two-layer split, mirrored 1:1 by module name:
 
 ### Server-originated messages
 
-The bot doesn't only answer its own commands: `tracker-server` (`internal/notify/telegram`) sends messages directly to the admin chat with inline buttons — running-timer remote (`t_pause:`/`t_stop:`) and the session-completion push card (`t_start:`, `t_extend:<task>:<min>`, `t_rest:<min>`, `t_evening_top3`). The `t_*` callback handlers in `handlers/timer.py` must keep accepting exactly what the server emits; `keyboards/timer.py` mirrors the same layouts for bot-sent messages. Changing a `t_*` prefix or payload shape requires a matching change in `tracker-server`.
+The bot doesn't only answer its own commands: `tracker-server` (`internal/notify/telegram`) sends messages directly to the admin chat with inline buttons — running-timer remote (`t_pause:`/`t_stop:`) and the session-completion push card (`t_start:`, `t_extend:<task>:<min>`, `t_evening_top3`). The rest balance is gone (2026-10): the server no longer sends `t_rest:<min>`, and `process_timer_rest_callback` only answers old cards that still carry it. The `t_*` callback handlers in `handlers/timer.py` must keep accepting exactly what the server emits; `keyboards/timer.py` mirrors the same layouts for bot-sent messages. Changing a `t_*` prefix or payload shape requires a matching change in `tracker-server`.
 
 Break selector (`handlers/breaks.py`, `keyboards/breaks.py`): `/break`, the `brk_menu` button under `/evening`, and the `t_brk:<task>:<min>` / `t_brkdur:<min>` buttons the server puts on the completion card after a `work`/`learn` task. Picking a duration does not refetch anything — `with_break_duration` rewrites the buttons of the message's own keyboard, so it works on the server-built card as well. Layout constants mirror `breakSelectorRows` in `tracker-server/internal/notify/telegram`.
 
@@ -62,10 +62,10 @@ Callback-query handlers and mid-FSM message handlers are generally *not* re-wrap
 ### FSM pattern (multi-step commands)
 
 Commands that need an argument (task name, minutes) support two paths in one handler:
-1. Argument given inline on the command line (e.g. `/restadd 30`) → resolve immediately, no state.
+1. Argument given inline on the command line (e.g. `/timer_start work`) → resolve immediately, no state.
 2. No argument → show an inline keyboard or prompt, `state.set_state(...)`, then a second handler (registered for that state, or a `callback_query` matching a `"prefix:"` data string) completes the action and calls `state.clear()`. Build task-name callback data with `keyboards/callback.py::task_callback` (never an f-string — Telegram's 64-byte limit) and resolve it with `handlers/task_callback.py::try_resolve_task_token`; it returns `None` for a hash that matches no task, and the handler must then call `answer_unknown_task` and stop instead of sending the raw `#hash` to the server.
 
-When adding a new stateful command, follow this same shape (see `handlers/timer.py::command_timer_start` / `process_timer_start`, or `handlers/rest.py::command_rest_add` / `process_rest_add`) rather than introducing a different state-management approach.
+When adding a new stateful command, follow this same shape (see `handlers/timer.py::command_timer_start` / `process_timer_start`) rather than introducing a different state-management approach.
 
 ### Tracker API conventions
 
@@ -73,7 +73,6 @@ When adding a new stateful command, follow this same shape (see `handlers/timer.
 - Endpoints are centralized in `tracker/const.py`; add new endpoints there rather than building URLs inline in a tracker module.
 - Response shape is inconsistent across endpoints — some return the payload directly (e.g. `stats.GetTaskList`), others wrap it as `{"status": "success", "data": {...}}` (e.g. `timer.TimerStatus`, `timer.TimerList`). Check the existing function for the endpoint you're touching rather than assuming a shape.
 - Non-200 responses either return a formatted error string or raise `tracker.errors.InvalidStatusCode` — callers in `handlers/` must be ready for either (see the `try/except errors.InvalidStatusCode` pattern in `handlers/statistic.py` and `handlers/task_record.py`).
-- Rest-time units: `AddRest` and `SpendRest` send raw minutes in `{"rest_time": minutes}`; `GetRest` returns hundredths of a minute, converted as `minutes = data["rest_time"] / 100`.
 
 ### Tests
 

@@ -200,7 +200,7 @@ def test_tracker_ramp_get_status_success():
             "enabled_roles": ["work", "learn"],
             "enabled_tasks": ["home_task"],
             "excluded_tasks": ["video"],
-            "default_rest_fallback": 15,
+            "default_fallback_minutes": 15,
         },
     }
     with patch("requests.get") as mock_get:
@@ -244,7 +244,7 @@ def test_tracker_ramp_reset_success():
             "enabled_roles": ["work", "learn"],
             "enabled_tasks": ["home_task"],
             "excluded_tasks": ["video"],
-            "default_rest_fallback": 15,
+            "default_fallback_minutes": 15,
         },
     }
     with patch("requests.post") as mock_post:
@@ -277,7 +277,7 @@ def test_get_ramp_status_model():
             "enabled_roles": ["work", "learn"],
             "enabled_tasks": ["home_task"],
             "excluded_tasks": ["video"],
-            "default_rest_fallback": 15,
+            "default_fallback_minutes": 15,
         },
     }
     with patch("tracker.ramp.get_ramp_status", return_value=fake_data):

@@ -7,7 +7,7 @@ from keyboards.timer import (
     get_paused_timer_keyboard,
     get_completion_push_card_keyboard,
 )
-from tracker import timer, rest, const
+from tracker import timer, const
 
 
 def test_callback_t_pause():
@@ -118,27 +118,6 @@ def test_callback_t_extend_message_deleted_race():
             # Should not raise exception
             await timer_handler.process_timer_extend_callback(callback)
             callback.answer.assert_called_once_with("+15 мин")
-
-    asyncio.run(run())
-
-
-def test_callback_t_rest_spends_minutes():
-    async def run():
-        with patch("tracker.rest.SpendRest", return_value="Spent 10 minutes of rest.") as mock_spend:
-            callback = MagicMock()
-            callback.data = "t_rest:10"
-            callback.message = MagicMock()
-            callback.message.edit_text = AsyncMock()
-            callback.answer = AsyncMock()
-
-            await timer_handler.process_timer_rest_callback(callback)
-
-            # /rest/spend takes minutes; the server converts to units itself
-            mock_spend.assert_called_once_with(10)
-            callback.answer.assert_called_once()
-            callback.message.edit_text.assert_called_once_with(
-                "☕️ Списано 10 мин отдыха. Приятного перерыва!"
-            )
 
     asyncio.run(run())
 
@@ -334,40 +313,18 @@ def test_completion_push_card_keyboard():
         current_task="english",
         next_task="work",
         extend_minutes=15,
-        rest_minutes=10,
     )
     assert len(markup.inline_keyboard) == 3
     # Row 1: Next task
     assert markup.inline_keyboard[0][0].text == "▶️ Запустить work"
     assert markup.inline_keyboard[0][0].callback_data == "t_start:work"
-    # Row 2: Rest & Extend
-    assert markup.inline_keyboard[1][0].text == "☕️ Перерыв 10м"
-    assert markup.inline_keyboard[1][0].callback_data == "t_rest:10"
-    assert markup.inline_keyboard[1][1].text == "⏳ Продлить +15м"
-    assert markup.inline_keyboard[1][1].callback_data == "t_extend:english:15"
+    # Row 2: Extend (the rest button is gone with the rest balance)
+    assert len(markup.inline_keyboard[1]) == 1
+    assert markup.inline_keyboard[1][0].text == "⏳ Продлить +15м"
+    assert markup.inline_keyboard[1][0].callback_data == "t_extend:english:15"
     # Row 3: Evening top 3
     assert markup.inline_keyboard[2][0].text == "🌙 Вечерний топ-3"
     assert markup.inline_keyboard[2][0].callback_data == "t_evening_top3"
-
-
-def test_rest_spend_and_add_openapi_payload():
-    with patch("requests.post") as mock_post:
-        mock_post.return_value = MagicMock(status_code=200)
-        res_spend = rest.SpendRest(10)
-        assert "Spent 10 minutes of rest." in res_spend
-        mock_post.assert_called_once_with(
-            const.REST_SPEND_URI,
-            json={"rest_time": 10},
-        )
-
-    with patch("requests.post") as mock_post:
-        mock_post.return_value = MagicMock(status_code=200)
-        res_add = rest.AddRest(15)
-        assert "Added 15 minutes of rest." in res_add
-        mock_post.assert_called_once_with(
-            const.REST_ADD_URI,
-            json={"rest_time": 15},
-        )
 
 
 def test_timer_start_with_target_duration():
@@ -410,22 +367,6 @@ def test_callback_t_extend_failure():
             await timer_handler.process_timer_extend_callback(callback)
 
             callback.message.edit_text.assert_called_once_with("Failed to start timer: status code 500")
-
-    asyncio.run(run())
-
-
-def test_callback_t_rest_failure():
-    async def run():
-        with patch("tracker.rest.SpendRest", return_value="Failed to spend rest with status code: 400"):
-            callback = MagicMock()
-            callback.data = "t_rest:10"
-            callback.message = MagicMock()
-            callback.message.edit_text = AsyncMock()
-            callback.answer = AsyncMock()
-
-            await timer_handler.process_timer_rest_callback(callback)
-
-            callback.message.edit_text.assert_called_once_with("Failed to spend rest with status code: 400")
 
     asyncio.run(run())
 
@@ -867,5 +808,22 @@ def test_task_record_callback_unresolved_hash_refuses():
             state.update_data.assert_not_called()
             state.set_state.assert_not_called()
             callback.message.edit_text.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_callback_t_rest_from_old_cards_is_a_noop():
+    async def run():
+        callback = MagicMock()
+        callback.data = "t_rest:10"
+        callback.message = MagicMock()
+        callback.message.edit_text = AsyncMock()
+        callback.answer = AsyncMock()
+
+        await timer_handler.process_timer_rest_callback(callback)
+
+        callback.answer.assert_called_once()
+        assert "Отдых больше не используется" in callback.answer.call_args.args[0]
+        callback.message.edit_text.assert_not_called()
 
     asyncio.run(run())

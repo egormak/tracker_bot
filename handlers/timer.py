@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from tracker import general, timer, stats, rest, errors
+from tracker import general, timer, stats, errors
 from keyboards.callback import task_callback
 from handlers.task_callback import try_resolve_task_token, answer_unknown_task
 from keyboards.timer import (
@@ -329,15 +329,8 @@ async def process_timer_extend_callback(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("t_rest:"))
 async def process_timer_rest_callback(callback: CallbackQuery) -> None:
-    min_str = callback.data.split(":", 1)[1]
-    minutes = int(min_str) if min_str.isdigit() else 10
-    res = rest.SpendRest(minutes)
-    await callback.answer()
-    if res.startswith("Failed"):
-        await callback.message.edit_text(res)
-    else:
-        msg = f"☕️ Списано {minutes} мин отдыха. Приятного перерыва!"
-        await callback.message.edit_text(msg)
+    # Cards sent before the rest balance was removed still carry this button.
+    await callback.answer("Отдых больше не используется — выбери задачу перерыва.", show_alert=True)
 
 
 @router.callback_query(F.data == "t_switch")

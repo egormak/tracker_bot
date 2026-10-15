@@ -34,7 +34,6 @@ def get_completion_push_card_keyboard(
     current_task: str,
     next_task: str = "",
     extend_minutes: int = 15,
-    rest_minutes: int = 10,
     break_options: list[dict] | None = None,
     weekly_digest: bool = False,
 ) -> InlineKeyboardMarkup:
@@ -46,7 +45,6 @@ def get_completion_push_card_keyboard(
         ])
     buttons.extend(get_break_selector_rows(break_options or []))
     buttons.append([
-        InlineKeyboardButton(text=f"☕️ Перерыв {rest_minutes}м", callback_data=f"t_rest:{rest_minutes}"),
         InlineKeyboardButton(text=f"⏳ Продлить +{extend_minutes}м", callback_data=task_callback("t_extend", current_task, f":{extend_minutes}")),
     ])
     buttons.append([

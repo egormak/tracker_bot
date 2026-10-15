@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
 
 from tracker import task_record, general, client_header
-from handlers import task_record, statistic, begin, rest, timer, evening, ramp, breaks
+from handlers import task_record, statistic, begin, timer, evening, ramp, breaks
 import config
 
 # All handlers should be attached to the Router (or Dispatcher)
@@ -37,7 +37,6 @@ async def main() -> None:
         task_record.router,
         statistic.router,
         begin.router,
-        rest.router,
         timer.router,
         evening.router,
         ramp.router,

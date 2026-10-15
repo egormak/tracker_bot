@@ -1,11 +1,11 @@
 # tracker_bot
 
-A Telegram bot client (aiogram v3) designed to interface with `tracker-server`. It allows a single admin user to record tasks, manage rest time, control task timers, view statistics, run warm-up ramps, and execute evening focus triage directly from Telegram.
+A Telegram bot client (aiogram v3) designed to interface with `tracker-server`. It allows a single admin user to record tasks, control task timers, view statistics, run warm-up ramps, and execute evening focus triage directly from Telegram.
 
 ## Project Overview
 
 - **Technologies**: Python 3.10+, aiogram v3, Pydantic, Requests, Pytest.
-- **Bot Nature**: Stateless thin client. All state (tasks, active timers, schedules, ramp progress, rest balances) lives in `tracker-server`. The bot only handles Telegram UI, FSM, and HTTP API calls.
+- **Bot Nature**: Stateless thin client. All state (tasks, active timers, schedules, ramp progress) lives in `tracker-server`. The bot only handles Telegram UI, FSM, and HTTP API calls.
 
 ## Architecture
 
@@ -15,7 +15,6 @@ The project follows a strict two-layer separation:
   - `begin.py`: `/start`, `/help`, `/webapp` mini-app button.
   - `task_record.py`: `/taskrecordadd` (record completed task time), `/task_plan_percent` (progress towards planned duration), FSM flow.
   - `timer.py`: `/timer_start`, `/timer_stop`, `/timer_pause`, `/timer_resume`, `/timer_status`, and server-originated remote timer callbacks (`t_*`).
-  - `rest.py`: `/restadd`, `/restspend`, `/restget` for managing rest minutes.
   - `statistic.py`: `/stats` (daily stats), `/tasklist` (summary of daily tasks and remaining time), `/nexttask` (schedule-based recommendation).
   - `evening.py`: `/evening` (Evening Focus Mode 2.0 triage: top-3 weekly deficit tasks, sprint combos, skips, duration adjustments, `eve_*` callbacks).
   - `ramp.py`: `/ramp` (Warm-Up Ramp Ladder status and `ramp:reset` callback).
@@ -26,7 +25,6 @@ The project follows a strict two-layer separation:
   - `errors.py`: Exception classes (`InvalidStatusCode`).
   - `task_record.py`: Add task records, query plan completion percentage.
   - `timer.py`: Timer lifecycle (start, stop, pause, resume, adjust, status, list, raw status).
-  - `rest.py`: Add, spend, and fetch rest time.
   - `stats.py`: Daily records, task lists, and next schedule task.
   - `evening.py`: Fetch evening focus candidates and skip evening tasks.
   - `ramp.py`: Fetch and reset warm-up ramp, parsed into Pydantic models (`RampStatus`, `RampConfig`).
@@ -93,16 +91,12 @@ No linter or code formatter (like ruff or black) is configured in the repository
   - `/timer_pause [task_name]`: Pause the running timer.
   - `/timer_resume [task_name]`: Resume the paused timer.
   - `/timer_status [task_name]`: View active timer status with interactive control buttons.
-- **Rest Management**:
-  - `/restadd [minutes]`: Add rest time.
-  - `/restspend [minutes]`: Spend rest time.
-  - `/restget`: View available rest balance.
 
 ## Server-Originated Messages & Callback Contract
 
 The bot does not only handle user-initiated commands. `tracker-server` (`internal/notify/telegram`) sends direct messages to the admin chat with inline buttons:
 - **Running Timer Remote**: `t_pause:<task>`, `t_resume:<task>`, `t_stop:<task>`, `t_switch`.
-- **Session-Completion Push Card**: `t_start:<task>`, `t_extend:<task>:<min>`, `t_rest:<min>`, `t_evening_top3`.
+- **Session-Completion Push Card**: `t_start:<task>`, `t_extend:<task>:<min>`, `t_evening_top3` (old cards may still carry `t_rest:<min>`; it only answers that rest is gone).
 
 The callback handlers in `handlers/timer.py` and keyboards in `keyboards/timer.py` must stay strictly synchronized with the prefixes and payload format emitted by `tracker-server`.
 
@@ -117,14 +111,11 @@ Telegram rejects messages if any button's `callback_data` exceeds 64 UTF-8 bytes
 
 - **Two-Layer Architecture**: Telegram UI/FSM stays in `handlers/`; HTTP calls and URL construction stay in `tracker/`. Handlers import and invoke `tracker` functions directly.
 - **FSM Pattern**: Stateful commands provide dual execution paths:
-  1. Inline argument (e.g. `/restadd 30` or `/timer_start coding`) executes immediately without entering state.
+  1. Inline argument (e.g. `/timer_start coding`) executes immediately without entering state.
   2. No argument prompts with an inline keyboard or text prompt, sets FSM state, and completes on callback/message input before clearing state.
 - **Authentication**: Gate entry-point handlers with `@general.telegram_auth` or `@general.telegram_auth_with_state` checking `tracker/const.ADMIN_ID`. Callbacks and intermediate FSM steps are not re-wrapped with auth decorators.
 - **Centralized Endpoints**: Add all API endpoint URLs to `tracker/const.py`. Never construct endpoint URLs inside handler modules.
 - **Synchronous Requests**: HTTP calls use synchronous `requests` inside async handlers. Blocking the event loop is an accepted design choice in this single-user bot.
 - **API Response Shapes**: Inconsistent across endpoints; some endpoints return payload directly (e.g. `stats.GetTaskList`), while others wrap it in `{"status": "success", "data": {...}}` (e.g. `timer.TimerList`, `ramp.get_ramp_status`). Always verify the exact shape when adding or modifying calls.
-- **Rest-Time Units**:
-  - `AddRest` and `SpendRest` send raw minutes in `{"rest_time": minutes}`.
-  - `GetRest` returns rest in units (hundredths of a minute), converted as `minutes = data["rest_time"] / 100`.
 - **Testing Pattern**: Tests mock network calls and Telegram objects (`MagicMock`, `AsyncMock`). Async handler tests run synchronously inside an inner `async def run(): ...` wrapped by `asyncio.run(run())` without `pytest-asyncio`.
-- **No Local State**: The bot is completely stateless; all task, timer, schedule, and rest state is managed by `tracker-server`.
+- **No Local State**: The bot is completely stateless; all task, timer and schedule state is managed by `tracker-server`.

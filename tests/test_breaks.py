@@ -68,7 +68,7 @@ def test_with_break_duration_rewrites_only_break_buttons():
         ["t_brk:movies:30"],
         ["t_brk:games:30", "t_brk:video:30"],
         ["t_brkdur:15", "t_brkdur:20", "t_brkdur:30"],
-        ["t_rest:10", "t_extend:work:15"],
+        ["t_extend:work:15"],
         ["t_evening_top3"],
     ]
     assert [b.text for b in updated.inline_keyboard[3]] == ["15м", "20м", "✓ 30м"]
@@ -85,7 +85,7 @@ def test_with_break_duration_keeps_colons_in_task_name():
 
 def test_completion_card_without_break_options_is_unchanged():
     card = get_completion_push_card_keyboard("video")
-    assert _data(card) == [["t_rest:10", "t_extend:video:15"], ["t_evening_top3"]]
+    assert _data(card) == [["t_extend:video:15"], ["t_evening_top3"]]
 
 
 def test_callback_break_start_uses_selected_duration():
