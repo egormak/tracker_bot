@@ -1,5 +1,10 @@
 import requests
-from . import const, errors
+from . import const, errors, timer
+
+# Target of a bot start when the task has nothing left for today. A start without a target is a
+# free timer, which the server stops after 20 minutes (watchdog safety cap).
+DEFAULT_START_MINUTES = 30
+PROGRESS_BAR_CELLS = 10
 
 def GetStats():
     response = requests.get(const.STATS_URI)
@@ -27,6 +32,72 @@ def GetTaskList() -> list[str]:
         return response.json()
     else:
         raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
+
+
+def TaskRemaining(task: dict) -> int:
+    """Minutes left today for a GET /tasklist item (never negative)."""
+    return max(0, (task.get("time_duration") or 0) - (task.get("time_done") or 0))
+
+
+def StartTarget(task_name: str) -> int:
+    """Target for a bot start: what is left of the task today, else DEFAULT_START_MINUTES.
+    Falls back to the default when the task list can't be read."""
+    try:
+        tasks = GetTaskList()
+    except Exception:
+        return DEFAULT_START_MINUTES
+    for task in tasks or []:
+        if (task.get("name") or task.get("task_name")) == task_name:
+            remaining = TaskRemaining(task)
+            return remaining if remaining > 0 else DEFAULT_START_MINUTES
+    return DEFAULT_START_MINUTES
+
+
+def GetDashboardState() -> dict:
+    response = requests.get(const.DASHBOARD_STATE_URI)
+    if response.status_code != 200:
+        raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
+    return response.json()
+
+
+def _bar(done: int, total: int) -> str:
+    filled = min(PROGRESS_BAR_CELLS, done * PROGRESS_BAR_CELLS // total) if total > 0 else 0
+    return "▓" * filled + "░" * (PROGRESS_BAR_CELLS - filled)
+
+
+def FormatToday(state: dict, debt_total: int | None = None) -> str:
+    """Formats GET /api/v1/dashboard/state as the bot's "Сегодня" card."""
+    total_planned = state.get("total_planned", 0)
+    total_done = state.get("total_done", 0)
+    pct = state.get("completion_pct", 0)
+    lines = [
+        f"📊 Сегодня: {_minutes(total_done)} из {_minutes(total_planned)} ({pct}%)",
+        _bar(total_done, total_planned),
+    ]
+
+    running = state.get("running_task")
+    if running and running.get("task_name"):
+        elapsed_min = timer.ElapsedSeconds(running) // 60
+        target = running.get("target_duration") or 0
+        icon = "▶️ Идёт" if running.get("is_running") else "⏸ На паузе"
+        progress = f"{elapsed_min} из {target}м" if target else f"{elapsed_min}м"
+        lines.append(f"\n{icon}: {running['task_name']} — {progress}")
+
+    tasks = state.get("today_tasks") or []
+    open_tasks = [t for t in tasks if TaskRemaining(t) > 0]
+    done_tasks = [t for t in tasks if TaskRemaining(t) == 0]
+    if tasks:
+        lines.append("")
+    for t in open_tasks:
+        lines.append(f"• {t['name']}: {t['time_done']}/{t['time_duration']}м — осталось {TaskRemaining(t)}м")
+    for t in done_tasks:
+        lines.append(f"✅ {t['name']}: {t['time_done']}/{t['time_duration']}м")
+    if not tasks:
+        lines.append("\nНа сегодня в расписании ничего нет.")
+
+    if debt_total:
+        lines.append(f"\n💳 Долг прошлых дней: {_minutes(debt_total)}")
+    return "\n".join(lines)
 
 
 def GetNextTask() -> str:

@@ -33,11 +33,21 @@ Production images are published via `.github/workflows/docker-publish.yml` on pu
 
 Two-layer split, mirrored 1:1 by module name:
 
-- `handlers/` — aiogram `Router`s: Telegram-facing concerns only (commands, FSM states, inline keyboards, formatting replies). One router per domain: `begin.py` (start/help/webapp), `task_record.py`, `timer.py`, `statistic.py`, `evening.py` (`/evening` focus triage: top-3 weekly-deficit tasks, `eve_*` callbacks), `ramp.py` (`/ramp` warm-up ramp status/reset). `handlers/task_callback.py` is a shared helper, not a router.
+- `handlers/` — aiogram `Router`s: Telegram-facing concerns only (commands, FSM states, inline keyboards, formatting replies). One router per domain: `begin.py` (start/help/webapp), `task_record.py`, `timer.py`, `statistic.py`, `evening.py` (`/evening` focus triage: top-3 weekly-deficit tasks, `eve_*` callbacks), `ramp.py` (`/ramp` warm-up ramp status/reset), `quick.py` (main keyboard, task grid, debt and today cards, text starts — see "Quick controls"). `handlers/task_callback.py` is a shared helper, not a router.
 - `tracker/` — plain functions that call the external tracker HTTP API via `requests` and return already-formatted strings (or raise). One module per domain, matching `handlers/` (`stats.py` ↔ `statistic.py`), plus `evening.py`, `const.py` (all endpoint URLs, built from `config.config['app_url']`), `errors.py` (`InvalidStatusCode`), and `general.py` (auth decorators). `tracker/ramp.py` is the one module that parses responses into pydantic models (`RampStatus`/`RampConfig`).
 - `keyboards/` — reusable `InlineKeyboardMarkup` builders (`timer.py`, `ramp.py`) and `callback.py` (callback-data encoding). Some handlers still build keyboards inline (e.g. `handlers/evening.py::build_evening_keyboard`).
 - `config/__init__.py` — loads `config.yaml` from the **current working directory** at import time into `config.config` (a dict). `tracker/const.py` reads from this at import time, so `config.yaml` must exist (and you must run from the repo root) before anything under `tracker/` is imported — this applies to tests too.
 - `main.py` — builds the `Bot`/`Dispatcher`, registers each handler router via `dp.include_routers(...)` (a new router must be added there), starts polling. No webhook mode.
+
+### Quick controls (`handlers/quick.py`, `keyboards/quick.py`)
+
+The main way to use the bot from the phone:
+- **Persistent reply keyboard** (`get_main_keyboard`, sent on `/start`, `/help`, `/menu`): `▶️ Задачи`, `⏯ Сейчас`, `📊 Сегодня`, `💳 Долг` (also `/go`, `/now`, `/today`, `/debt`). Button texts arrive as plain messages. `quick.router` is included **first** in `main.py` so these buttons win over the FSM input handlers of other routers (they clear the state).
+- **Task grid** (`q_list`) is built from `GET /tasklist` plus `GET /debt`. Order: tasks with minutes left today, then debt-only tasks, then finished ones. `q_task:<task>` opens a card with `q_go:<task>:<min>` (rest of today, 15/30/45/60) and `q_debt:<task>:<min>`. The second starts with `debt_share=100` and the task's whole debt as the target, so on stop the session pays the previous-days debt (server `splitSession`).
+- **Cards:** `📊 Сегодня` renders `GET /dashboard/state` (`stats.FormatToday`), and `/stats` shows the same card. `💳 Долг` renders `GET /debt` (`tracker/debt.py`).
+- **Free text** (only in `default_state`, not `/…`): `video`, `video 30`, `video долг`, `video 20 в долг`. Names are matched case-insensitively against today's tasks, debt tasks and break options (`parse_quick_text`).
+- **Every bot start sends a target** (`stats.StartTarget`: today's remainder, else `DEFAULT_START_MINUTES` = 30). This includes `t_start` from server cards and `/timer_start`. A start without a target is a free timer, and the server watchdog stops it after 20 minutes.
+- **Command menu:** `main.py` sets `begin.BOT_COMMANDS` via `set_my_commands`.
 
 ### Server-originated messages
 

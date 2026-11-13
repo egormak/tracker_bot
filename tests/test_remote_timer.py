@@ -152,7 +152,9 @@ def test_callback_t_switch():
 
 def test_callback_t_start():
     async def run():
-        with patch("tracker.timer.TimerStart", return_value="Started timer for 'reading'.") as mock_start:
+        tasks = [{"name": "reading", "time_duration": 60, "time_done": 15}]
+        with patch("tracker.stats.GetTaskList", return_value=tasks), \
+             patch("tracker.timer.TimerStart", return_value="Started timer for 'reading'.") as mock_start:
             callback = MagicMock()
             callback.data = "t_start:reading"
             callback.message = MagicMock()
@@ -161,16 +163,36 @@ def test_callback_t_start():
 
             await timer_handler.process_timer_start_callback(callback)
 
-            mock_start.assert_called_once_with("reading")
+            # Today's remainder as the target: without one the server stops the run after 20 minutes.
+            mock_start.assert_called_once_with("reading", target_duration=45)
             callback.answer.assert_called_once()
             callback.message.edit_text.assert_called_once_with("Started timer for 'reading'.")
 
     asyncio.run(run())
 
 
+def test_callback_t_start_finished_task_gets_default_target():
+    async def run():
+        tasks = [{"name": "video", "time_duration": 30, "time_done": 40}]
+        with patch("tracker.stats.GetTaskList", return_value=tasks), \
+             patch("tracker.timer.TimerStart", return_value="Started timer for 'video'.") as mock_start:
+            callback = MagicMock()
+            callback.data = "t_start:video"
+            callback.message = MagicMock()
+            callback.message.edit_text = AsyncMock()
+            callback.answer = AsyncMock()
+
+            await timer_handler.process_timer_start_callback(callback)
+
+            mock_start.assert_called_once_with("video", target_duration=30)
+
+    asyncio.run(run())
+
+
 def test_callback_t_start_message_deleted_race():
     async def run():
-        with patch("tracker.timer.TimerStart", return_value="Started timer for 'reading'."):
+        with patch("tracker.stats.GetTaskList", return_value=[]), \
+             patch("tracker.timer.TimerStart", return_value="Started timer for 'reading'."):
             callback = MagicMock()
             callback.data = "t_start:reading"
             callback.message = MagicMock()
@@ -395,7 +417,8 @@ def test_parse_timer_status_string():
 
 def test_process_timer_start_message_fsm():
     async def run():
-        with patch("tracker.timer.TimerStart", return_value="Started timer for 'fsm_task'.") as mock_start:
+        with patch("tracker.stats.GetTaskList", side_effect=Exception("down")), \
+             patch("tracker.timer.TimerStart", return_value="Started timer for 'fsm_task'.") as mock_start:
             message = MagicMock()
             message.text = "fsm_task"
             message.answer = AsyncMock()
@@ -404,7 +427,7 @@ def test_process_timer_start_message_fsm():
 
             await timer_handler.process_timer_start_message(message, state)
 
-            mock_start.assert_called_once_with("fsm_task")
+            mock_start.assert_called_once_with("fsm_task", target_duration=30)
             state.clear.assert_called_once()
             message.answer.assert_called_once_with("Started timer for 'fsm_task'.")
 
@@ -413,7 +436,9 @@ def test_process_timer_start_message_fsm():
 
 def test_command_timer_start_direct_text_no_duplicate_keyboard():
     async def run():
-        with patch("tracker.timer.TimerStart", return_value="Started timer for 'direct_task'.") as mock_start:
+        tasks = [{"name": "direct_task", "time_duration": 25, "time_done": 0}]
+        with patch("tracker.stats.GetTaskList", return_value=tasks), \
+             patch("tracker.timer.TimerStart", return_value="Started timer for 'direct_task'.") as mock_start:
             message = MagicMock()
             message.text = "/timer_start direct_task"
             message.from_user.id = const.ADMIN_ID
@@ -423,7 +448,7 @@ def test_command_timer_start_direct_text_no_duplicate_keyboard():
             with patch("tracker.const.ADMIN_ID", const.ADMIN_ID):
                 await timer_handler.command_timer_start(message, state)
 
-            mock_start.assert_called_once_with("direct_task")
+            mock_start.assert_called_once_with("direct_task", target_duration=25)
             message.answer.assert_called_once_with("Started timer for 'direct_task'.")
 
     asyncio.run(run())

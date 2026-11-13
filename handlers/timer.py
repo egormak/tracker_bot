@@ -38,13 +38,18 @@ def _resolve_callback_task(callback_data: str, prefix: str) -> str | None:
     return try_resolve_task_token(callback_data[len(prefix):])
 
 
+def _start_with_target(task_name: str) -> str:
+    # Always send a target: a run without one is a free timer the server stops after 20 minutes.
+    return timer.TimerStart(task_name, target_duration=stats.StartTarget(task_name))
+
+
 @router.message(Command("timer_start"))
 @general.telegram_auth_with_state
 async def command_timer_start(message: Message, state: FSMContext) -> None:
     parts = message.text.split() if message.text else []
     if len(parts) > 1:
         task_name = " ".join(parts[1:])
-        res = timer.TimerStart(task_name)
+        res = _start_with_target(task_name)
         await message.answer(res)
     else:
         keyboard = []
@@ -67,7 +72,7 @@ async def command_timer_start(message: Message, state: FSMContext) -> None:
 @router.message(TimerStartState.task)
 async def process_timer_start_message(message: Message, state: FSMContext) -> None:
     task_name = message.text.strip()
-    res = timer.TimerStart(task_name)
+    res = _start_with_target(task_name)
     await state.clear()
     await message.answer(res)
 
@@ -156,7 +161,11 @@ async def command_timer_resume(message: Message) -> None:
 async def command_timer_status(message: Message) -> None:
     parts = message.text.split() if message.text else []
     task_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+    await send_timer_status(message, task_name)
 
+
+async def send_timer_status(message: Message, task_name: str = "") -> None:
+    """Replies with the active timer and its pause/resume/stop keyboard."""
     # Check TimerList first to determine active task and state
     try:
         tasks = timer.TimerList()
@@ -372,7 +381,7 @@ async def process_timer_start_callback(callback: CallbackQuery, state: FSMContex
         await _answer_unknown_task(callback)
         return
     await callback.answer()
-    res = timer.TimerStart(task_name)
+    res = _start_with_target(task_name)
     if state:
         await state.clear()
     try:

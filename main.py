@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, Router, types
 from aiogram.enums import ParseMode
 
 from tracker import task_record, general, client_header
-from handlers import task_record, statistic, begin, timer, evening, ramp, breaks
+from handlers import task_record, statistic, begin, timer, evening, ramp, breaks, quick
 import config
 
 # All handlers should be attached to the Router (or Dispatcher)
@@ -34,6 +34,8 @@ async def main() -> None:
     dp = Dispatcher()
     # ... and all other routers should be attached to Dispatcher
     dp.include_routers(
+        # First: the main-keyboard buttons must win over the FSM input handlers of the routers below.
+        quick.router,
         task_record.router,
         statistic.router,
         begin.router,
@@ -45,6 +47,10 @@ async def main() -> None:
 
     # Initialize Bot instance with a default parse mode which will be passed to all API calls
     bot = Bot(config.config["telegram"]["token"])
+    try:
+        await bot.set_my_commands(begin.BOT_COMMANDS)
+    except Exception as e:
+        logging.warning("Failed to set the bot command menu: %s", e)
     # And the run events dispatching
     await dp.start_polling(bot)
 

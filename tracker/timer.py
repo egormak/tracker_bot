@@ -1,8 +1,10 @@
 import requests
 from . import const, errors
 
-def TimerStart(task_name: str, group_name: str = "", target_duration: int = 0, origin: str = "") -> str:
-    """Start a task. `origin` ("break", "evening", "combo") feeds the server's weekly usage counters."""
+def TimerStart(task_name: str, group_name: str = "", target_duration: int = 0, origin: str = "", debt_share: int = 0) -> str:
+    """Start a task. `origin` ("break", "evening", "combo") feeds the server's weekly usage counters.
+    `debt_share` (0–100) is the percent of the session that pays the task's previous-days debt on stop;
+    the server keeps it only when a new run starts, not on resume."""
     data = {"task_name": task_name}
     if group_name:
         data["group_name"] = group_name
@@ -10,6 +12,8 @@ def TimerStart(task_name: str, group_name: str = "", target_duration: int = 0, o
         data["target_duration"] = target_duration
     if origin:
         data["origin"] = origin
+    if debt_share:
+        data["debt_share"] = debt_share
 
     response = requests.post(const.TIMER_RUN_START, json=data)
     
@@ -73,6 +77,19 @@ def TimerStatus(task_name: str = "") -> str:
             return "No timers are currently active."
     else:
         raise errors.InvalidStatusCode(f"GET request failed with status code: {response.status_code}")
+
+def ElapsedSeconds(task_data: dict) -> int:
+    """Elapsed time of a RunningTask: `accumulated` (minutes) plus the current run if it is running."""
+    elapsed = (task_data.get("accumulated") or 0) * 60
+    if task_data.get("is_running") and task_data.get("start_time"):
+        from datetime import datetime, timezone
+        try:
+            start_dt = datetime.fromisoformat(task_data["start_time"].replace("Z", "+00:00"))
+            elapsed += max(0, int((datetime.now(timezone.utc) - start_dt).total_seconds()))
+        except Exception:
+            pass
+    return elapsed
+
 
 def TimerList() -> list:
     response = requests.get(const.TIMER_RUN_LIST)
