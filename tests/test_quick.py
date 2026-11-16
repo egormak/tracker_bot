@@ -6,7 +6,7 @@ from aiogram.types import ReplyKeyboardMarkup
 from handlers import quick as quick_handler
 from keyboards import quick as kb
 from keyboards.callback import task_hash
-from tracker import const, debt as debt_api, stats, timer
+from tracker import const, debt as debt_api, errors, stats, timer
 
 TODAY = [
     {"name": "work", "role": "work", "time_duration": 120, "time_done": 120, "priority": 1},
@@ -92,6 +92,22 @@ def test_get_dashboard_state_url():
         mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"today_tasks": []}))
         assert stats.GetDashboardState() == {"today_tasks": []}
         mock_get.assert_called_once_with(const.DASHBOARD_STATE_URI)
+
+
+def test_get_task_list_reads_dashboard_state():
+    with patch("requests.get") as mock_get:
+        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"today_tasks": TODAY, "total_planned": 210}))
+        assert stats.GetTaskList() == TODAY
+        mock_get.assert_called_once_with(const.DASHBOARD_STATE_URI)
+    with patch("requests.get") as mock_get:
+        mock_get.return_value = MagicMock(status_code=200, json=MagicMock(return_value={"today_tasks": None}))
+        assert stats.GetTaskList() == []
+    with patch("requests.get", return_value=MagicMock(status_code=500)):
+        try:
+            stats.GetTaskList()
+        except errors.InvalidStatusCode:
+            return
+    assert False, "expected InvalidStatusCode"
 
 
 def test_format_today():

@@ -6,36 +6,14 @@ from . import const, errors, timer
 DEFAULT_START_MINUTES = 30
 PROGRESS_BAR_CELLS = 10
 
-def GetStats():
-    response = requests.get(const.STATS_URI)
-
-    if response.status_code != 200:
-        message = "Can't get stats, responce code: " + str(response.status_code)
-        return message
-
-    data = response.json()
-    # print(data)
-    message = "Statistic Information:\n"
-    for category, information in data.items():
-        message += category + ": \n"
-        for k,v in information.items():
-            message += f"   {k}: {v}\n"
-        message += "\n"
-    return message
-
-def GetTaskList() -> list[str]:
-    response = requests.get(const.TASK_LIST_URI)
-
-    # Check the response status code
-    if response.status_code == 200:
-        # Success!
-        return response.json()
-    else:
-        raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
+def GetTaskList() -> list[dict]:
+    """Today's tasks: `today_tasks` of GET /dashboard/state, items with `name`, `role`,
+    `time_duration`, `time_done`, `priority`. Raises errors.InvalidStatusCode on a non-200 answer."""
+    return GetDashboardState().get("today_tasks") or []
 
 
 def TaskRemaining(task: dict) -> int:
-    """Minutes left today for a GET /tasklist item (never negative)."""
+    """Minutes left today for a `today_tasks` item of GET /dashboard/state (never negative)."""
     return max(0, (task.get("time_duration") or 0) - (task.get("time_done") or 0))
 
 
@@ -175,7 +153,3 @@ def GetWeeklyDigest(week: str = "current") -> str:
     if response.status_code != 200:
         raise errors.InvalidStatusCode("GET request failed with status code: " + str(response.status_code))
     return FormatWeeklyDigest(response.json())
-
-
-if __name__ == "__main__":
-    GetStats()

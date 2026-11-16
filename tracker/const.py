@@ -2,10 +2,8 @@ import config
 
 ADMIN_ID = 234872620
 # URL = "http://tracker.makegorka.com:8080"
-STATS_URI = f"{config.config['app_url']}/api/v1/records"
 TASK_RECORD_URI = f"{config.config['app_url']}/api/v1/taskrecord"
 WEEKLY_DIGEST_URI = f"{config.config['app_url']}/api/v1/stats/weekly/digest"
-TASK_LIST_URI = f"{config.config['app_url']}/api/v1/tasklist"
 TASK_PLAN_PERCENT = f"{config.config['app_url']}/api/v1/task/plan/percent"
 TASK_PLAN_PERCENT_SCHEDULE = f"{config.config['app_url']}/api/v1/task/plan/percent/schedule"
 DASHBOARD_STATE_URI = f"{config.config['app_url']}/api/v1/dashboard/state"

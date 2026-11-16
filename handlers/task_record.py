@@ -21,7 +21,6 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
     """
     This handler receives messages with `/taskrecordadd` command
     """
-    # answer_msg = stats.GetStats()
     if len(message.text.split()) > 1:
         result = task_record.AddTaskRecord(message.text)
         await message.answer(result)

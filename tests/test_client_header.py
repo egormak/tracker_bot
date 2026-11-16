@@ -30,7 +30,7 @@ def test_header_added_only_for_tracker_server():
     restore = _install_with(captured)
     try:
         app_url = config.config["app_url"]
-        requests.get(f"{app_url}/api/v1/records")
+        requests.get(f"{app_url}/api/v1/dashboard/state")
         requests.post(f"{app_url}/api/v1/timer/run/start", json={}, headers={"X-Other": "1"})
         requests.get("https://example.invalid/elsewhere")
     finally:
