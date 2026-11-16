@@ -15,6 +15,7 @@ MAIN_DEBT = "💳 Долг"
 MAIN_BUTTONS = (MAIN_TASKS, MAIN_NOW, MAIN_TODAY, MAIN_DEBT)
 
 START_DURATIONS = (15, 30, 45, 60)
+DEBT_SHARES = (25, 50, 75)
 TASKS_PER_ROW = 2
 MAX_DEBT_BUTTONS = 8
 
@@ -22,6 +23,7 @@ MAX_DEBT_BUTTONS = 8
 TASK_CARD_PREFIX = "q_task"   # q_task:<task>         → duration card
 GO_PREFIX = "q_go"            # q_go:<task>:<min>     → start for <min>
 DEBT_PREFIX = "q_debt"        # q_debt:<task>:<min>   → start for <min>, all of it pays the debt
+SHARE_PREFIX = "q_share"      # q_share:<task>:<min>-<pct> → start for <min>, <pct>% pays the debt
 TASKS_DATA = "q_list"
 TODAY_DATA = "q_today"
 DEBTS_DATA = "q_debts"
@@ -81,6 +83,17 @@ def get_task_card_keyboard(name: str, remaining: int, debt: int) -> InlineKeyboa
             text=f"💳 Закрыть долг {debt}м",
             callback_data=task_callback(DEBT_PREFIX, name, f":{debt}"),
         )])
+    if remaining > 0 and debt > 0:
+        # A share only matters when both today and the debt are open: the run covers both,
+        # and the share decides how an early stop is divided.
+        total = remaining + debt
+        rows.append([
+            InlineKeyboardButton(
+                text=f"💳 {pct}%",
+                callback_data=task_callback(SHARE_PREFIX, name, f":{total}-{pct}"),
+            )
+            for pct in DEBT_SHARES
+        ])
     rows.append([InlineKeyboardButton(text="« Задачи", callback_data=TASKS_DATA)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

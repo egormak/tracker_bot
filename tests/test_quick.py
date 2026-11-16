@@ -179,9 +179,16 @@ def test_task_card_keyboard_with_remaining_and_debt():
         ["q_go:video:20"],
         ["q_go:video:15", "q_go:video:30", "q_go:video:45", "q_go:video:60"],
         ["q_debt:video:40"],
+        ["q_share:video:60-25", "q_share:video:60-50", "q_share:video:60-75"],
         ["q_list"],
     ]
     assert markup.inline_keyboard[2][0].text == "💳 Закрыть долг 40м"
+    assert _texts(markup)[3] == ["💳 25%", "💳 50%", "💳 75%"]
+
+
+def test_task_card_keyboard_debt_without_remaining_has_no_share_row():
+    markup = kb.get_task_card_keyboard("video", remaining=0, debt=40)
+    assert not any(d.startswith("q_share") for row in _data(markup) for d in row)
 
 
 def test_task_card_keyboard_without_remaining_or_debt():
@@ -216,14 +223,22 @@ NAMES = ["video", "telegram", "home_task", "Deep Work"]
 
 
 def test_parse_quick_text():
-    assert quick_handler.parse_quick_text("video", NAMES) == ("video", 0, False)
-    assert quick_handler.parse_quick_text("Video 30", NAMES) == ("video", 30, False)
-    assert quick_handler.parse_quick_text("video 30м", NAMES) == ("video", 30, False)
-    assert quick_handler.parse_quick_text("video долг", NAMES) == ("video", 0, True)
-    assert quick_handler.parse_quick_text("video в долг", NAMES) == ("video", 0, True)
-    assert quick_handler.parse_quick_text("video 20 долг", NAMES) == ("video", 20, True)
-    assert quick_handler.parse_quick_text("video долг 20", NAMES) == ("video", 20, True)
-    assert quick_handler.parse_quick_text("deep work 45", NAMES) == ("Deep Work", 45, False)
+    assert quick_handler.parse_quick_text("video", NAMES) == ("video", 0, 0)
+    assert quick_handler.parse_quick_text("Video 30", NAMES) == ("video", 30, 0)
+    assert quick_handler.parse_quick_text("video 30м", NAMES) == ("video", 30, 0)
+    assert quick_handler.parse_quick_text("video долг", NAMES) == ("video", 0, 100)
+    assert quick_handler.parse_quick_text("video в долг", NAMES) == ("video", 0, 100)
+    assert quick_handler.parse_quick_text("video 20 долг", NAMES) == ("video", 20, 100)
+    assert quick_handler.parse_quick_text("video долг 20", NAMES) == ("video", 20, 100)
+    assert quick_handler.parse_quick_text("deep work 45", NAMES) == ("Deep Work", 45, 0)
+
+
+def test_parse_quick_text_share():
+    assert quick_handler.parse_quick_text("video 60 50%", NAMES) == ("video", 60, 50)
+    assert quick_handler.parse_quick_text("video 25% 40", NAMES) == ("video", 40, 25)
+    assert quick_handler.parse_quick_text("video 50%", NAMES) == ("video", 0, 50)
+    assert quick_handler.parse_quick_text("video 0%", NAMES) is None
+    assert quick_handler.parse_quick_text("video 150%", NAMES) is None
 
 
 def test_parse_quick_text_unknown():
@@ -277,8 +292,10 @@ def test_task_card():
             markup = callback.message.edit_text.call_args[1]["reply_markup"]
             assert "Сегодня: 10/30м — осталось 20м" in text
             assert "💳 Долг прошлых дней: 40м" in text
+            assert "💳 % — запуск на 60м" in text
             assert _data(markup)[0] == ["q_go:video:20"]
             assert _data(markup)[2] == ["q_debt:video:40"]
+            assert _data(markup)[3][1] == "q_share:video:60-50"
 
     asyncio.run(run())
 
@@ -317,6 +334,31 @@ def test_debt_button_starts_with_full_share():
 
             mock_start.assert_called_once_with("video", target_duration=40, debt_share=100)
             assert callback.message.edit_text.call_args[0][0] == "💳 video — 40 мин в счёт долга"
+
+    asyncio.run(run())
+
+
+def test_share_button_starts_with_partial_share():
+    async def run():
+        with patch("tracker.timer.TimerStart", return_value="Started timer for 'video'.") as mock_start:
+            callback = _callback("q_share:video:60-25")
+            await quick_handler.process_share_start(callback)
+
+            mock_start.assert_called_once_with("video", target_duration=60, debt_share=25)
+            assert callback.message.edit_text.call_args[0][0] == "▶️ video — 60 мин, 💳 25% в долг"
+
+    asyncio.run(run())
+
+
+def test_share_button_with_hashed_name():
+    async def run():
+        with patch("tracker.stats.GetTaskList", return_value=[]), \
+             patch("tracker.debt.GetDebt", return_value={"items": [{"task_name": LONG_TASK, "remaining": 30}]}), \
+             patch("tracker.timer.TimerList", return_value=[]), \
+             patch("tracker.timer.TimerStart", return_value="Started") as mock_start:
+            callback = _callback(f"q_share:#{task_hash(LONG_TASK)}:40-75")
+            await quick_handler.process_share_start(callback)
+            mock_start.assert_called_once_with(LONG_TASK, target_duration=40, debt_share=75)
 
     asyncio.run(run())
 
@@ -456,6 +498,23 @@ def test_text_debt_closes_whole_debt():
     message, mock_start = _run_text("video долг")
     mock_start.assert_called_once_with("video", target_duration=40, debt_share=100)
     assert message.answer.call_args[0][0] == "💳 video — 40 мин в счёт долга"
+
+
+def test_text_share_with_minutes():
+    message, mock_start = _run_text("video 60 50%")
+    mock_start.assert_called_once_with("video", target_duration=60, debt_share=50)
+    assert message.answer.call_args[0][0] == "▶️ video — 60 мин, 💳 50% в долг"
+
+
+def test_text_share_without_minutes_covers_remainder_and_debt():
+    _, mock_start = _run_text("video 50%")
+    mock_start.assert_called_once_with("video", target_duration=60, debt_share=50)
+
+
+def test_text_share_without_debt():
+    message, mock_start = _run_text("english 50%")
+    mock_start.assert_not_called()
+    assert message.answer.call_args[0][0] == "У english нет долга."
 
 
 def test_text_debt_without_debt():

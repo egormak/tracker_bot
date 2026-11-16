@@ -22,7 +22,9 @@ router = Router()
 
 DEBT_WORDS = {"долг", "debt"}
 MINUTES_RE = re.compile(r"(\d{1,3})(м|m|мин|min)?")
-TEXT_HINT = "Можно написать текстом: «video 30», «video долг»."
+SHARE_RE = re.compile(r"(\d{1,3})%")
+FULL_SHARE = 100
+TEXT_HINT = "Можно написать текстом: «video 30», «video 60 50%», «video долг»."
 
 
 # --- data ---
@@ -62,12 +64,13 @@ def collect_tasks(today: list[dict], debt_by_task: dict[str, int]) -> list[tuple
     return open_tasks + debt_only + done_tasks
 
 
-def parse_quick_text(text: str, names: list[str]) -> tuple[str, int, bool] | None:
-    """`video` → (video, 0, False); `video 30` → (video, 30, False); `video долг` / `video в долг`
-    → (video, 0, True); `video 20 долг` → (video, 20, True). The name matches case-insensitively;
-    None when it matches no known task."""
+def parse_quick_text(text: str, names: list[str]) -> tuple[str, int, int] | None:
+    """Returns (name, minutes, debt share %). `video` → (video, 0, 0); `video 30` → (video, 30, 0);
+    `video долг` / `video в долг` → (video, 0, 100); `video 20 долг` → (video, 20, 100);
+    `video 60 50%` → (video, 60, 50). The name matches case-insensitively; None when it matches
+    no known task."""
     tokens = (text or "").strip().split()
-    minutes, debt = 0, False
+    minutes, share = 0, 0
     while tokens:
         tail = tokens[-1].lower()
         match = MINUTES_RE.fullmatch(tail)
@@ -75,8 +78,13 @@ def parse_quick_text(text: str, names: list[str]) -> tuple[str, int, bool] | Non
             minutes = int(match.group(1))
             tokens.pop()
             continue
-        if tail in DEBT_WORDS and not debt:
-            debt = True
+        match = SHARE_RE.fullmatch(tail)
+        if match and not share and 0 < int(match.group(1)) <= FULL_SHARE:
+            share = int(match.group(1))
+            tokens.pop()
+            continue
+        if tail in DEBT_WORDS and not share:
+            share = FULL_SHARE
             tokens.pop()
             if tokens and tokens[-1].lower() == "в":
                 tokens.pop()
@@ -87,21 +95,23 @@ def parse_quick_text(text: str, names: list[str]) -> tuple[str, int, bool] | Non
         return None
     for name in names:
         if name and name.lower() == wanted:
-            return name, minutes, debt
+            return name, minutes, share
     return None
 
 
-def start_task(task_name: str, minutes: int, debt: bool) -> tuple[bool, str]:
-    """Starts `task_name` for `minutes`; with `debt` the whole session pays its previous-days debt."""
+def start_task(task_name: str, minutes: int, share: int) -> tuple[bool, str]:
+    """Starts `task_name` for `minutes`; `share` % of the session pays its previous-days debt."""
     try:
-        res = timer.TimerStart(task_name, target_duration=minutes, debt_share=100 if debt else 0)
+        res = timer.TimerStart(task_name, target_duration=minutes, debt_share=share)
     except Exception:
         logger.exception("Failed to start '%s'", task_name)
         return False, "Не удалось запустить: сервер недоступен."
     if res.startswith("Failed"):
         return False, res
-    if debt:
+    if share >= FULL_SHARE:
         return True, f"💳 {task_name} — {minutes} мин в счёт долга"
+    if share > 0:
+        return True, f"▶️ {task_name} — {minutes} мин, 💳 {share}% в долг"
     return True, f"▶️ {task_name} — {minutes} мин"
 
 
@@ -149,6 +159,9 @@ def format_task_card(name: str, today_task: dict | None, debt: int) -> str:
         lines.append(f"Сегодня: {done}/{planned}м — {status}")
     if debt > 0:
         lines.append(f"💳 Долг прошлых дней: {debt}м")
+        if today_task is not None and stats.TaskRemaining(today_task) > 0:
+            total = stats.TaskRemaining(today_task) + debt
+            lines.append(f"💳 % — запуск на {total}м: эта доля уходит в долг, остальное в сегодня")
     lines.append("\nНа сколько минут?")
     return "\n".join(lines)
 
@@ -276,14 +289,19 @@ async def process_task_card(callback: CallbackQuery) -> None:
     )
 
 
-async def _start_from_callback(callback: CallbackQuery, prefix: str, debt: bool) -> None:
-    token, min_str = split_task_payload(callback.data, f"{prefix}:")
+async def _start_from_callback(callback: CallbackQuery, prefix: str, share: int | None) -> None:
+    """`share` None means the share comes from the payload (`<min>-<pct>`)."""
+    token, payload = split_task_payload(callback.data, f"{prefix}:")
     name = try_resolve_task_token(token, extra_names=_debt_names)
     if name is None:
         await answer_unknown_task(callback, "Откройте ▶️ Задачи заново")
         return
+    min_str = payload
+    if share is None:
+        min_str, _, pct_str = payload.partition("-")
+        share = min(int(pct_str), FULL_SHARE) if pct_str.isdigit() else 0
     minutes = int(min_str) if min_str.isdigit() and int(min_str) > 0 else stats.DEFAULT_START_MINUTES
-    ok, text = start_task(name, minutes, debt)
+    ok, text = start_task(name, minutes, share)
     if not ok:
         # The keyboard stays: nothing started, the user can tap again.
         await callback.answer(text, show_alert=True)
@@ -294,12 +312,17 @@ async def _start_from_callback(callback: CallbackQuery, prefix: str, debt: bool)
 
 @router.callback_query(F.data.startswith(f"{kb.GO_PREFIX}:"))
 async def process_go(callback: CallbackQuery) -> None:
-    await _start_from_callback(callback, kb.GO_PREFIX, debt=False)
+    await _start_from_callback(callback, kb.GO_PREFIX, share=0)
 
 
 @router.callback_query(F.data.startswith(f"{kb.DEBT_PREFIX}:"))
 async def process_debt_start(callback: CallbackQuery) -> None:
-    await _start_from_callback(callback, kb.DEBT_PREFIX, debt=True)
+    await _start_from_callback(callback, kb.DEBT_PREFIX, share=FULL_SHARE)
+
+
+@router.callback_query(F.data.startswith(f"{kb.SHARE_PREFIX}:"))
+async def process_share_start(callback: CallbackQuery) -> None:
+    await _start_from_callback(callback, kb.SHARE_PREFIX, share=None)
 
 
 # --- free text: "video 30", "video долг" ---
@@ -325,13 +348,19 @@ async def quick_text_start(message: Message) -> None:
         )
         return
 
-    name, minutes, debt = parsed
-    if debt and not minutes:
-        minutes = debt_by_task.get(name, 0)
-        if not minutes:
+    name, minutes, share = parsed
+    task_debt = debt_by_task.get(name, 0)
+    if share and not minutes:
+        if not task_debt:
             await message.answer(f"У {name} нет долга.")
             return
+        if share >= FULL_SHARE:
+            minutes = task_debt
+        else:
+            # A partial share without minutes covers today's remainder and the whole debt.
+            today_task = next((t for t in _today_tasks() if _task_name(t) == name), None)
+            minutes = (stats.TaskRemaining(today_task) if today_task else 0) + task_debt
     if not minutes:
         minutes = stats.StartTarget(name)
-    ok, text = start_task(name, minutes, debt)
+    ok, text = start_task(name, minutes, share)
     await message.answer(text, reply_markup=get_running_timer_keyboard(name) if ok else None)
